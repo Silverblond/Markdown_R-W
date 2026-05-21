@@ -31,7 +31,24 @@ const els = {
 };
 
 // ---------- Markdown rendering ----------
-window.marked.setOptions({ gfm: true, breaks: false });
+
+// GFM 스타일 헤딩 ID 생성: "My Heading" → "my-heading"
+function toHeadingId(rawText) {
+  return rawText
+    .toLowerCase()
+    .replace(/[^\w\s가-힣぀-ヿ一-鿿-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
+// 헤딩에 id를 붙여주는 커스텀 렌더러 (앵커 링크 타겟용)
+const headingRenderer = {
+  heading({ text, depth, raw }) {
+    const id = toHeadingId(raw);
+    return `<h${depth} id="${id}">${text}</h${depth}>\n`;
+  },
+};
+window.marked.use({ renderer: headingRenderer, gfm: true, breaks: false });
 
 function renderInto(markdown, container) {
   container.innerHTML = window.marked.parse(markdown ?? "");
@@ -212,11 +229,10 @@ function wire() {
         // 외부 URL → 기본 브라우저로 열기
         opener.openUrl(href).catch(() => {});
       } else if (href.startsWith("#")) {
-        // 문서 내 앵커 → 같은 컨테이너 안에서 스크롤
-        const target = container.querySelector(decodeURIComponent(href).slice(1)
-          .replace(/^[^a-zA-Z]/, (c) => `\\3${c.codePointAt(0).toString(16)} `));
-        (target ?? container.ownerDocument.getElementById(href.slice(1)))
-          ?.scrollIntoView({ behavior: "smooth" });
+        // 문서 내 앵커 → 헤딩 id로 찾아서 스크롤
+        const id = decodeURIComponent(href.slice(1));
+        const target = container.querySelector(`#${CSS.escape(id)}`);
+        target?.scrollIntoView({ behavior: "smooth" });
       } else if (href.match(/\.(md|markdown|mdown|mkd|txt)$/i)) {
         // 상대 경로 마크다운 파일 → 앱에서 열기
         const base = currentPath

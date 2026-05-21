@@ -56,11 +56,22 @@ window.marked.use({
   },
 });
 
+function resolveLocalImages(container) {
+  const dir = currentPath?.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+  container.querySelectorAll("img[src]").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (!src || src.startsWith("http") || src.startsWith("data:") || src.startsWith("asset://")) return;
+    const abs = src.startsWith("/") ? src : dir ? `${dir}/${src}` : null;
+    if (abs) img.src = window.__TAURI__.core.convertFileSrc(abs);
+  });
+}
+
 function renderInto(markdown, container) {
   container.innerHTML = window.marked.parse(markdown ?? "");
   container.querySelectorAll("pre code").forEach((block) => {
     try { window.hljs.highlightElement(block); } catch (_) {}
   });
+  resolveLocalImages(container);
 }
 
 // ---------- View ----------

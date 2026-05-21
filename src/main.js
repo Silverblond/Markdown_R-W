@@ -715,6 +715,30 @@ function wire() {
   });
 }
 
+// ---------- Close guard (issue #23) ----------
+async function wireCloseGuard() {
+  try {
+    const appWindow = window.__TAURI__.window.getCurrentWindow();
+    await appWindow.onCloseRequested(async (event) => {
+      if (!dirty) return; // nothing unsaved — let the OS close normally
+      event.preventDefault();
+
+      // Ask whether to save before quitting
+      const wantSave = await dialog.ask(
+        "저장하지 않은 변경 사항이 있습니다.\n저장 후 종료하시겠습니까?",
+        { title: "저장하지 않은 변경 사항", okLabel: "저장 후 종료", cancelLabel: "저장 안 함" }
+      );
+      if (wantSave) await save();
+      await appWindow.destroy();
+    });
+  } catch (_) {
+    // Fallback for environments where onCloseRequested isn't available
+    window.addEventListener("beforeunload", (e) => {
+      if (dirty) { e.preventDefault(); e.returnValue = ""; }
+    });
+  }
+}
+
 // ---------- Init ----------
 async function init() {
   const saved = localStorage.getItem("theme") ||
@@ -726,6 +750,7 @@ async function init() {
 
   wire();
   wireSettings();
+  wireCloseGuard();
   wireSidebarTabs();
   wireSplitResizer();
   wireScrollTop();

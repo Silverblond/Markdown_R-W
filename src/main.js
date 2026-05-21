@@ -106,13 +106,30 @@ window.marked.use({
   },
 });
 
+function normalizePath(p) {
+  // Resolve ".." and "." segments from an absolute posix-style path
+  const parts = p.split("/");
+  const result = [];
+  for (const part of parts) {
+    if (part === "..") result.pop();
+    else if (part !== ".") result.push(part);
+  }
+  return result.join("/");
+}
+
 function resolveLocalImages(container) {
   const dir = currentPath?.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
-  container.querySelectorAll("img[src]").forEach((img) => {
+  container.querySelectorAll("img").forEach((img) => {
     const src = img.getAttribute("src");
     if (!src || src.startsWith("http") || src.startsWith("data:") || src.startsWith("asset://")) return;
-    const abs = src.startsWith("/") ? src : dir ? `${dir}/${src}` : null;
-    if (abs) img.src = window.__TAURI__.core.convertFileSrc(abs);
+    const rawAbs = src.startsWith("/") ? src : dir ? `${dir}/${src}` : null;
+    if (!rawAbs) return;
+    const abs = normalizePath(rawAbs.replace(/\\/g, "/"));
+    const assetUrl = window.__TAURI__.core.convertFileSrc(abs);
+    // Clear src first to force the browser to abandon any failed/pending request,
+    // then set the correct asset:// URL so it re-fetches cleanly.
+    img.removeAttribute("src");
+    img.src = assetUrl;
   });
 }
 

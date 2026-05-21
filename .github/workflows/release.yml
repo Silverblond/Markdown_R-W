@@ -1,0 +1,80 @@
+name: Release
+
+# v1.0.0 형식의 태그를 push하면 실행됩니다.
+# 예: git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags:
+      - 'v[0-9]+.*'
+
+# GitHub Release 생성/편집 권한
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Apple Silicon (M1/M2/M3)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          # macOS Intel
+          - os: macos-13
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          # Windows x64
+          - os: windows-latest
+            target: ''
+            args: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Rust 의존성 캐시 — 두 번째 빌드부터 시간 대폭 단축
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Markdown Viewer ${{ github.ref_name }}
+          releaseBody: |
+            ## 설치 방법
+
+            | 플랫폼 | 다운로드 파일 |
+            |--------|--------------|
+            | macOS Apple Silicon (M1/M2/M3) | `Markdown.Viewer_*_aarch64.dmg` |
+            | macOS Intel | `Markdown.Viewer_*_x64.dmg` |
+            | Windows (설치 마법사) | `Markdown.Viewer_*_x64-setup.exe` |
+            | Windows (MSI) | `Markdown.Viewer_*_x64_en-US.msi` |
+
+            > macOS: 처음 실행 시 "확인되지 않은 개발자" 경고가 뜨면
+            > `시스템 설정 → 개인 정보 보호 및 보안 → 앱 허용` 또는
+            > `Control + 클릭 → 열기` 로 실행하세요.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

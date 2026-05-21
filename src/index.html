@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Viewer</title>
+    <link rel="stylesheet" href="/vendor/github.min.css" id="hljs-light" />
+    <link rel="stylesheet" href="/vendor/github-dark.min.css" id="hljs-dark" disabled />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/vendor/marked.umd.js"></script>
+    <script src="/vendor/highlight.min.js"></script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="group">
+        <button id="btn-open" title="열기 (Ctrl/Cmd+O)">📂 열기</button>
+        <button id="btn-save" title="저장 (Ctrl/Cmd+S)" disabled>💾 저장</button>
+      </div>
+
+      <div class="group modes" role="tablist">
+        <button id="mode-preview" class="active" data-mode="preview">미리보기</button>
+        <button id="mode-source" data-mode="source">원본</button>
+        <button id="mode-edit" data-mode="edit">편집</button>
+      </div>
+
+      <div class="group right">
+        <span id="filename" class="filename">파일 없음</span>
+        <button id="btn-theme" title="테마 전환">🌙</button>
+      </div>
+    </header>
+
+    <main id="content">
+      <!-- Preview -->
+      <article id="view-preview" class="pane markdown-body"></article>
+
+      <!-- Source (read-only raw) -->
+      <pre id="view-source" class="pane hidden"><code class="language-markdown"></code></pre>
+
+      <!-- Edit (split: editor + live preview) -->
+      <div id="view-edit" class="pane split hidden">
+        <textarea id="editor" spellcheck="false" placeholder="여기에 마크다운을 입력하세요..."></textarea>
+        <article id="edit-preview" class="markdown-body"></article>
+      </div>
+
+      <!-- Empty state -->
+      <div id="dropzone" class="dropzone">
+        <div>
+          <p class="big">마크다운 파일을 여기로 끌어다 놓거나</p>
+          <p><button id="btn-open-empty">파일 열기</button> 를 누르세요</p>
+          <p class="hint">.md · .markdown · .txt</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-left"></span>
+      <span id="status-right"></span>
+    </footer>
+
+    <script src="/main.js"></script>
+  </body>
+</html>

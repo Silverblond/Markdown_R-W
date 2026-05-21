@@ -597,6 +597,44 @@ function wireLinkClicks() {
   });
 }
 
+// ---------- Lightbox (issue #27) ----------
+function wireLightbox() {
+  const lb      = $("lightbox");
+  const lbImg   = $("lightbox-img");
+  const lbCap   = $("lightbox-caption");
+  const lbClose = $("lightbox-close");
+
+  function open(src, alt) {
+    lbImg.src = src;
+    lbCap.textContent = alt || "";
+    lb.style.display = "flex";
+    // Trigger transition on next frame
+    requestAnimationFrame(() => lb.classList.add("visible"));
+    document.addEventListener("keydown", onKey);
+  }
+
+  function close() {
+    lb.classList.remove("visible");
+    document.removeEventListener("keydown", onKey);
+    setTimeout(() => { lb.style.display = "none"; lbImg.src = ""; }, 200);
+  }
+
+  function onKey(e) { if (e.key === "Escape") close(); }
+
+  lb.addEventListener("click", (e) => { if (e.target === lb) close(); });
+  lbClose.addEventListener("click", close);
+
+  // Delegate click on images inside preview panes
+  [els.preview, els.editPreview].forEach((container) => {
+    container.addEventListener("click", (e) => {
+      const img = e.target.closest("img");
+      if (!img) return;
+      e.preventDefault();
+      open(img.src, img.alt);
+    });
+  });
+}
+
 // ---------- Settings panel (features #7, #8) ----------
 function wireSettings() {
   $("btn-settings").addEventListener("click", (e) => {
@@ -803,6 +841,7 @@ async function init() {
   wire();
   wireSettings();
   wireCloseGuard();
+  wireLightbox();
   wireSidebarTabs();
   wireSplitResizer();
   wireScrollTop();

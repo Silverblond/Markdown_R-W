@@ -204,6 +204,15 @@
       <span id="status-right"></span>
     </footer>
 
+    <!-- Lightbox overlay -->
+    <div id="lightbox" role="dialog" aria-modal="true" aria-label="이미지 확대">
+      <button id="lightbox-close" title="닫기 (Esc)">✕</button>
+      <figure style="margin:0;display:flex;flex-direction:column;align-items:center">
+        <img id="lightbox-img" src="" alt="" />
+        <figcaption id="lightbox-caption"></figcaption>
+      </figure>
+    </div>
+
     <script src="/main.js"></script>
   </body>
 </html>

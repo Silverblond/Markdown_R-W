@@ -1,6 +1,7 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const dialog = window.__TAURI__.dialog;
+const opener = window.__TAURI__.opener;
 
 // ---------- State ----------
 let currentPath = null; // absolute path of the open file, or null
@@ -196,6 +197,35 @@ function wire() {
       e.preventDefault();
       setMode(mode === "edit" ? "preview" : "edit");
     }
+  });
+
+  // Link clicks in rendered preview
+  [els.preview, els.editPreview].forEach((container) => {
+    container.addEventListener("click", (e) => {
+      const a = e.target.closest("a[href]");
+      if (!a) return;
+      e.preventDefault();
+      const href = a.getAttribute("href");
+      if (!href) return;
+
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        // 외부 URL → 기본 브라우저로 열기
+        opener.openUrl(href).catch(() => {});
+      } else if (href.startsWith("#")) {
+        // 문서 내 앵커 → 같은 컨테이너 안에서 스크롤
+        const target = container.querySelector(decodeURIComponent(href).slice(1)
+          .replace(/^[^a-zA-Z]/, (c) => `\\3${c.codePointAt(0).toString(16)} `));
+        (target ?? container.ownerDocument.getElementById(href.slice(1)))
+          ?.scrollIntoView({ behavior: "smooth" });
+      } else if (href.match(/\.(md|markdown|mdown|mkd|txt)$/i)) {
+        // 상대 경로 마크다운 파일 → 앱에서 열기
+        const base = currentPath
+          ? currentPath.replace(/\\/g, "/").replace(/\/[^/]+$/, "")
+          : null;
+        const resolved = base ? `${base}/${href}` : href;
+        openPath(resolved);
+      }
+    });
   });
 
   // Tab inserts two spaces in the editor instead of moving focus

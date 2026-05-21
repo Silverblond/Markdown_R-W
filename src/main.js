@@ -9,6 +9,10 @@ let currentText = "";
 let dirty = false;
 let mode = "preview";
 let sidebarOpen = true;
+let focusMode = false;
+let searchOpen = false;
+let searchMatches = [];
+let searchIndex = -1;
 
 const MD_FILTERS = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] },
@@ -16,27 +20,73 @@ const MD_FILTERS = [
 ];
 const RECENT_KEY = "md_viewer_recent";
 const RECENT_MAX = 10;
+const SETTINGS_KEY = "md_viewer_settings";
 
 // ---------- Elements ----------
 const $ = (id) => document.getElementById(id);
 const els = {
-  preview:       $("view-preview"),
-  source:        $("view-source").querySelector("code"),
-  sourcePre:     $("view-source"),
-  edit:          $("view-edit"),
-  editor:        $("editor"),
-  editPreview:   $("edit-preview"),
-  welcome:       $("welcome"),
-  filename:      $("filename"),
-  btnSave:       $("btn-save"),
-  btnScrollTop:  $("btn-scroll-top"),
-  sidebar:       $("sidebar"),
-  sidebarTree:   $("sidebar-tree"),
-  recentSection: $("recent-section"),
-  recentList:    $("recent-list"),
-  statusLeft:    $("status-left"),
-  statusRight:   $("status-right"),
+  preview:        $("view-preview"),
+  source:         $("view-source").querySelector("code"),
+  sourcePre:      $("view-source"),
+  edit:           $("view-edit"),
+  editor:         $("editor"),
+  editPreview:    $("edit-preview"),
+  welcome:        $("welcome"),
+  filename:       $("filename"),
+  btnSave:        $("btn-save"),
+  btnScrollTop:   $("btn-scroll-top"),
+  sidebar:        $("sidebar"),
+  sidebarTree:    $("sidebar-tree"),
+  recentSection:  $("recent-section"),
+  recentList:     $("recent-list"),
+  statusLeft:     $("status-left"),
+  statusRight:    $("status-right"),
+  toolbar:        $("toolbar"),
+  statusbar:      $("statusbar"),
+  tocList:        $("toc-list"),
+  searchBar:      $("search-bar"),
+  searchInput:    $("search-input"),
+  searchCount:    $("search-count"),
+  fileChangedBar: $("file-changed-bar"),
+  splitResizer:   $("split-resizer"),
+  settingsPanel:  $("settings-panel"),
+  settingFont:    $("setting-font"),
+  fontSizeVal:    $("font-size-val"),
+  settingWrap:    $("setting-wrap"),
 };
+
+// ---------- Settings ----------
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) ?? {}; }
+  catch (_) { return {}; }
+}
+
+function saveSettings(patch) {
+  const s = { ...loadSettings(), ...patch };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  return s;
+}
+
+function applySettings(s) {
+  const fontMap = {
+    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", Roboto, Helvetica, Arial, sans-serif',
+    serif: 'Georgia, "Times New Roman", Times, serif',
+    mono: '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
+    georgia: 'Georgia, serif',
+  };
+  const font = s.font ?? "system";
+  const size = s.fontSize ?? 16;
+  const wrap = s.wrap ?? false;
+
+  document.documentElement.style.setProperty("--preview-font", fontMap[font] ?? fontMap.system);
+  document.documentElement.style.setProperty("--preview-font-size", `${size}px`);
+  els.editor.style.whiteSpace = wrap ? "pre-wrap" : "pre";
+  els.editor.style.overflowWrap = wrap ? "break-word" : "normal";
+
+  els.settingFont.value = font;
+  els.fontSizeVal.textContent = size;
+  els.settingWrap.checked = wrap;
+}
 
 // ---------- Markdown rendering ----------
 function toHeadingId(raw) {
@@ -74,6 +124,27 @@ function renderInto(markdown, container) {
   resolveLocalImages(container);
 }
 
+// ---------- TOC (feature #1) ----------
+function buildToc(container) {
+  const headings = container.querySelectorAll("h1, h2, h3, h4");
+  els.tocList.innerHTML = "";
+  if (!headings.length) {
+    els.tocList.innerHTML = '<p class="tree-hint">목차가 없습니다</p>';
+    return;
+  }
+  headings.forEach((h) => {
+    const a = document.createElement("a");
+    a.className = `toc-item toc-${h.tagName.toLowerCase()}`;
+    a.textContent = h.textContent;
+    a.href = "#";
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      h.scrollIntoView({ behavior: "smooth" });
+    });
+    els.tocList.appendChild(a);
+  });
+}
+
 // ---------- View ----------
 function setMode(next) {
   mode = next;
@@ -92,12 +163,15 @@ function setMode(next) {
 function refreshActiveView() {
   if (mode === "preview") {
     renderInto(currentText, els.preview);
+    buildToc(els.preview);
+    if (searchOpen) applySearch();
   } else if (mode === "source") {
     els.source.textContent = currentText;
     els.source.className = "language-markdown";
     try { window.hljs.highlightElement(els.source); } catch (_) {}
   } else if (mode === "edit") {
     renderInto(els.editor.value, els.editPreview);
+    buildToc(els.editPreview);
   }
 }
 
@@ -164,6 +238,7 @@ function setContent(text, path) {
   }
   refreshActiveView();
   refreshStatus();
+  hideFileChangedBar();
 }
 
 async function openPath(path) {
@@ -171,6 +246,7 @@ async function openPath(path) {
     const text = await invoke("read_file", { path });
     setContent(text, path);
     setMode("preview");
+    try { await invoke("watch_file", { path }); } catch (_) {}
   } catch (e) {
     alert(e);
   }
@@ -254,6 +330,167 @@ function buildTreeNode(node, isRoot = false) {
 function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
   els.sidebar.classList.toggle("collapsed", !sidebarOpen);
+}
+
+function wireSidebarTabs() {
+  document.querySelectorAll(".sidebar-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".sidebar-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      const target = tab.dataset.tab;
+      $("sidebar-panel-files").classList.toggle("hidden", target !== "files");
+      $("sidebar-panel-toc").classList.toggle("hidden", target !== "toc");
+    });
+  });
+}
+
+// ---------- File changed bar (feature #4) ----------
+function showFileChangedBar() {
+  els.fileChangedBar.classList.remove("hidden");
+}
+
+function hideFileChangedBar() {
+  els.fileChangedBar.classList.add("hidden");
+}
+
+// ---------- Search (feature #2) ----------
+function toggleSearch() {
+  searchOpen = !searchOpen;
+  els.searchBar.classList.toggle("hidden", !searchOpen);
+  if (searchOpen) {
+    els.searchInput.focus();
+    els.searchInput.select();
+  } else {
+    clearSearch();
+  }
+}
+
+function closeSearch() {
+  searchOpen = false;
+  els.searchBar.classList.add("hidden");
+  clearSearch();
+}
+
+function clearSearch() {
+  const container = getSearchContainer();
+  if (container) {
+    container.querySelectorAll("mark.search-match").forEach((m) => {
+      m.replaceWith(document.createTextNode(m.textContent));
+    });
+  }
+  searchMatches = [];
+  searchIndex = -1;
+  els.searchCount.textContent = "";
+}
+
+function getSearchContainer() {
+  if (mode === "preview") return els.preview;
+  if (mode === "edit") return els.editPreview;
+  return null;
+}
+
+function applySearch() {
+  const container = getSearchContainer();
+  if (!container) return;
+
+  const query = els.searchInput.value;
+  clearSearch();
+  if (!query) return;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement.closest("mark")) continue;
+    textNodes.push(node);
+  }
+
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  textNodes.forEach((tn) => {
+    const text = tn.nodeValue;
+    if (!re.test(text)) return;
+    re.lastIndex = 0;
+
+    const frag = document.createDocumentFragment();
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const mark = document.createElement("mark");
+      mark.className = "search-match";
+      mark.textContent = m[0];
+      frag.appendChild(mark);
+      last = re.lastIndex;
+    }
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+
+  searchMatches = Array.from(container.querySelectorAll("mark.search-match"));
+  if (searchMatches.length) {
+    searchIndex = 0;
+    highlightCurrent();
+  }
+  els.searchCount.textContent = searchMatches.length ? `${searchIndex + 1} / ${searchMatches.length}` : "없음";
+}
+
+function highlightCurrent() {
+  searchMatches.forEach((m, i) => m.classList.toggle("current", i === searchIndex));
+  if (searchMatches[searchIndex]) {
+    searchMatches[searchIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  els.searchCount.textContent = searchMatches.length ? `${searchIndex + 1} / ${searchMatches.length}` : "없음";
+}
+
+function searchNext() {
+  if (!searchMatches.length) return;
+  searchIndex = (searchIndex + 1) % searchMatches.length;
+  highlightCurrent();
+}
+
+function searchPrev() {
+  if (!searchMatches.length) return;
+  searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
+  highlightCurrent();
+}
+
+// ---------- Focus mode (feature #6) ----------
+function toggleFocusMode() {
+  focusMode = !focusMode;
+  document.body.classList.toggle("focus-mode", focusMode);
+  $("btn-focus").classList.toggle("active", focusMode);
+}
+
+// ---------- Split resizer (feature #5) ----------
+function wireSplitResizer() {
+  const resizer = els.splitResizer;
+  if (!resizer) return;
+
+  let startX, startEditorWidth;
+
+  resizer.addEventListener("mousedown", (e) => {
+    startX = e.clientX;
+    startEditorWidth = els.editor.getBoundingClientRect().width;
+    resizer.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!resizer.classList.contains("dragging")) return;
+    const dx = e.clientX - startX;
+    const total = els.edit.getBoundingClientRect().width - resizer.offsetWidth;
+    const newW = Math.min(Math.max(startEditorWidth + dx, 200), total - 200);
+    const pct = (newW / total) * 100;
+    els.editor.style.flex = `0 0 ${pct}%`;
+    els.editPreview.style.flex = `0 0 ${100 - pct}%`;
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!resizer.classList.contains("dragging")) return;
+    resizer.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+  });
 }
 
 // ---------- Status bar ----------
@@ -343,6 +580,47 @@ function wireLinkClicks() {
   });
 }
 
+// ---------- Settings panel (features #7, #8) ----------
+function wireSettings() {
+  $("btn-settings").addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.settingsPanel.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!els.settingsPanel.contains(e.target) && e.target !== $("btn-settings")) {
+      els.settingsPanel.classList.add("hidden");
+    }
+  });
+
+  els.settingFont.addEventListener("change", () => {
+    applySettings(saveSettings({ font: els.settingFont.value }));
+  });
+
+  $("btn-font-inc").addEventListener("click", () => {
+    const next = Math.min((loadSettings().fontSize ?? 16) + 1, 32);
+    applySettings(saveSettings({ fontSize: next }));
+  });
+  $("btn-font-dec").addEventListener("click", () => {
+    const next = Math.max((loadSettings().fontSize ?? 16) - 1, 10);
+    applySettings(saveSettings({ fontSize: next }));
+  });
+
+  els.settingWrap.addEventListener("change", () => {
+    applySettings(saveSettings({ wrap: els.settingWrap.checked }));
+  });
+}
+
+function injectPreviewFontCss() {
+  const style = document.createElement("style");
+  style.textContent = `
+    #view-preview, #edit-preview {
+      font-family: var(--preview-font);
+      font-size: var(--preview-font-size, 16px);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ---------- Wiring ----------
 function wire() {
   $("btn-sidebar-toggle").addEventListener("click", toggleSidebar);
@@ -353,6 +631,29 @@ function wire() {
   $("btn-welcome-file").addEventListener("click", openFileDialog);
   $("btn-welcome-dir").addEventListener("click", openDirDialog);
 
+  // Print (feature #3)
+  $("btn-print").addEventListener("click", () => window.print());
+
+  // Search (feature #2)
+  $("btn-search").addEventListener("click", toggleSearch);
+  $("btn-search-close").addEventListener("click", closeSearch);
+  $("btn-search-next").addEventListener("click", searchNext);
+  $("btn-search-prev").addEventListener("click", searchPrev);
+  els.searchInput.addEventListener("input", () => applySearch());
+  els.searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.shiftKey ? searchPrev() : searchNext(); }
+    if (e.key === "Escape") closeSearch();
+  });
+
+  // Focus mode (feature #6)
+  $("btn-focus").addEventListener("click", toggleFocusMode);
+
+  // File changed bar (feature #4)
+  $("btn-reload").addEventListener("click", async () => {
+    if (currentPath) await openPath(currentPath);
+  });
+  $("btn-dismiss-change").addEventListener("click", hideFileChangedBar);
+
   document.querySelectorAll(".modes button").forEach((b) => {
     b.addEventListener("click", () => setMode(b.dataset.mode));
   });
@@ -362,7 +663,10 @@ function wire() {
   els.editor.addEventListener("input", () => {
     dirty = els.editor.value !== currentText;
     clearTimeout(renderTimer);
-    renderTimer = setTimeout(() => renderInto(els.editor.value, els.editPreview), 150);
+    renderTimer = setTimeout(() => {
+      renderInto(els.editor.value, els.editPreview);
+      buildToc(els.editPreview);
+    }, 150);
     refreshStatus();
   });
 
@@ -383,23 +687,38 @@ function wire() {
     else if (k === "s") { e.preventDefault(); save(); }
     else if (k === "e") { e.preventDefault(); setMode(mode === "edit" ? "preview" : "edit"); }
     else if (k === "b") { e.preventDefault(); toggleSidebar(); }
+    else if (k === "f") {
+      if (e.shiftKey) { e.preventDefault(); toggleFocusMode(); }
+      else { e.preventDefault(); toggleSearch(); }
+    }
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && focusMode) toggleFocusMode();
   });
 }
 
 // ---------- Init ----------
 async function init() {
-  // Apply saved/system theme before anything renders
   const saved = localStorage.getItem("theme") ||
     (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   applyTheme(saved);
 
+  injectPreviewFontCss();
+  applySettings(loadSettings());
+
   wire();
+  wireSettings();
+  wireSidebarTabs();
+  wireSplitResizer();
   wireScrollTop();
   wireLinkClicks();
   await wireDragDrop();
 
-  // Render recent files on welcome screen
   renderRecentList();
+
+  // File changed from outside (feature #4)
+  listen("file-changed", () => showFileChangedBar());
 
   // File opened while app is running (macOS "Open With")
   listen("open-file", (e) => { if (e.payload) openPath(e.payload); });

@@ -4,6 +4,8 @@ use tauri::{Emitter, Manager};
 #[derive(Default)]
 struct PendingFile(Mutex<Option<String>>);
 
+struct FileWatcher(Mutex<Option<Box<dyn notify::Watcher + Send>>>);
+
 #[derive(serde::Serialize)]
 struct FileNode {
     name: String,
@@ -27,9 +29,43 @@ fn take_startup_file(state: tauri::State<PendingFile>) -> Option<String> {
     state.0.lock().unwrap().take()
 }
 
-/// Recursively build a file tree rooted at `path`.
-/// Only returns directories that contain at least one markdown file (recursively),
-/// and markdown files themselves.
+#[tauri::command]
+fn watch_file(
+    path: String,
+    app: tauri::AppHandle,
+    state: tauri::State<FileWatcher>,
+) -> Result<(), String> {
+    use notify::{RecursiveMode, Watcher};
+
+    let app2 = app.clone();
+    let watched_path = path.clone();
+
+    let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if let Ok(event) = res {
+            use notify::EventKind::*;
+            match event.kind {
+                Modify(_) | Create(_) | Remove(_) => {
+                    let _ = app2.emit("file-changed", watched_path.clone());
+                }
+                _ => {}
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
+
+    let mut w = watcher;
+    w.watch(std::path::Path::new(&path), RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
+
+    *state.0.lock().unwrap() = Some(Box::new(w));
+    Ok(())
+}
+
+#[tauri::command]
+fn unwatch_file(state: tauri::State<FileWatcher>) {
+    *state.0.lock().unwrap() = None;
+}
+
 #[tauri::command]
 fn read_dir_tree(path: String) -> Result<FileNode, String> {
     fn build(p: &std::path::Path, depth: usize) -> Option<FileNode> {
@@ -47,11 +83,9 @@ fn read_dir_tree(path: String) -> Result<FileNode, String> {
                 .filter_map(|e| e.ok())
                 .filter_map(|e| build(&e.path(), depth + 1))
                 .collect();
-            // Skip empty subdirectories (no markdown files inside)
             if depth > 0 && children.is_empty() {
                 return None;
             }
-            // Directories first, then files; both sorted alphabetically
             children.sort_by(|a, b| {
                 b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
             });
@@ -100,11 +134,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PendingFile(Mutex::new(startup_arg)))
+        .manage(FileWatcher(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             read_file,
             save_file,
             take_startup_file,
             read_dir_tree,
+            watch_file,
+            unwatch_file,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -696,6 +696,58 @@ function wire() {
     els.editor.selectionStart = els.editor.selectionEnd = s + 2;
   });
 
+  // Markdown formatting shortcuts (issue #26): Cmd/Ctrl + B/I/K/`
+  els.editor.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const k = e.key.toLowerCase();
+    if (!["b", "i", "k", "`"].includes(k)) return;
+    // Don't conflict with global shortcuts when not in edit mode
+    if (mode !== "edit") return;
+    e.preventDefault();
+
+    const ta = els.editor;
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const sel   = ta.value.slice(start, end);
+    const before = ta.value.slice(0, start);
+    const after  = ta.value.slice(end);
+
+    let wrap, cursorOffset;
+    if (k === "b")  { wrap = "**"; cursorOffset = 2; }
+    else if (k === "i")  { wrap = "*";  cursorOffset = 1; }
+    else if (k === "k")  {
+      // Link: [text](url) — if selection exists use it as text
+      const linkText = sel || "링크 텍스트";
+      const inserted = `[${linkText}](url)`;
+      ta.value = before + inserted + after;
+      // Place cursor on "url" so user can type it immediately
+      const urlStart = before.length + linkText.length + 3; // "[text](" offset
+      ta.selectionStart = urlStart;
+      ta.selectionEnd   = urlStart + 3; // select "url"
+      ta.dispatchEvent(new Event("input"));
+      return;
+    }
+    else if (k === "`") { wrap = "`";  cursorOffset = 1; }
+
+    if (sel) {
+      // Check if already wrapped → toggle off
+      if (before.endsWith(wrap) && after.startsWith(wrap)) {
+        ta.value = before.slice(0, -wrap.length) + sel + after.slice(wrap.length);
+        ta.selectionStart = start - cursorOffset;
+        ta.selectionEnd   = end   - cursorOffset;
+      } else {
+        ta.value = before + wrap + sel + wrap + after;
+        ta.selectionStart = start + cursorOffset;
+        ta.selectionEnd   = end   + cursorOffset;
+      }
+    } else {
+      // No selection: insert markers and place cursor between them
+      ta.value = before + wrap + wrap + after;
+      ta.selectionStart = ta.selectionEnd = start + cursorOffset;
+    }
+    ta.dispatchEvent(new Event("input"));
+  });
+
   // Keyboard shortcuts
   window.addEventListener("keydown", (e) => {
     if (!(e.metaKey || e.ctrlKey)) return;

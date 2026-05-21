@@ -50,20 +50,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Opened { urls } = event {
+        .run(|app, event| match event {
+            // macOS delivers "Open With" / file-association opens as a RunEvent.
+            // Windows/Linux use CLI args (handled via startup_arg above).
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            tauri::RunEvent::Opened { urls } => {
                 if let Some(path) = urls
                     .iter()
                     .filter_map(|u| u.to_file_path().ok())
                     .map(|p| p.to_string_lossy().to_string())
                     .next()
                 {
-                    // Stash it and notify the frontend if it's already running.
                     if let Some(state) = app.try_state::<PendingFile>() {
                         *state.0.lock().unwrap() = Some(path.clone());
                     }
                     let _ = app.emit("open-file", path);
                 }
             }
+            _ => {}
         });
 }

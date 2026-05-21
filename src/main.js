@@ -26,6 +26,7 @@ const els = {
   dropzone: $("dropzone"),
   filename: $("filename"),
   btnSave: $("btn-save"),
+  btnScrollTop: $("btn-scroll-top"),
   statusLeft: $("status-left"),
   statusRight: $("status-right"),
 };
@@ -73,6 +74,7 @@ function setMode(next) {
 
   refreshActiveView();
   if (next === "edit") els.editor.focus();
+  els.btnScrollTop?.classList.add("hidden");
   refreshStatus();
 }
 
@@ -183,6 +185,26 @@ function wire() {
   $("btn-open-empty").addEventListener("click", openDialog);
   $("btn-save").addEventListener("click", save);
   $("btn-theme").addEventListener("click", toggleTheme);
+
+  // Scroll-to-top button: 현재 활성 스크롤 컨테이너 기준으로 표시/숨김
+  function getScrollPane() {
+    if (mode === "edit") return els.editPreview;
+    if (mode === "source") return els.sourcePre;
+    return els.preview;
+  }
+
+  function updateScrollTopBtn() {
+    const pane = getScrollPane();
+    els.btnScrollTop.classList.toggle("hidden", pane.scrollTop < 200);
+  }
+
+  [els.preview, els.editPreview, els.sourcePre].forEach((pane) => {
+    pane.addEventListener("scroll", updateScrollTopBtn, { passive: true });
+  });
+
+  els.btnScrollTop.addEventListener("click", () => {
+    getScrollPane().scrollTo({ top: 0, behavior: "smooth" });
+  });
 
   document.querySelectorAll(".modes button").forEach((b) => {
     b.addEventListener("click", () => setMode(b.dataset.mode));

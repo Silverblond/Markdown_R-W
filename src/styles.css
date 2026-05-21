@@ -721,9 +721,12 @@ mark.search-match.current {
 body.focus-mode #toolbar,
 body.focus-mode #sidebar,
 body.focus-mode #statusbar,
-body.focus-mode .search-bar,
 body.focus-mode .file-changed-bar {
   display: none !important;
+}
+/* 포커스 모드에서도 검색바는 열릴 수 있어야 함 */
+body.focus-mode .search-bar:not(.hidden) {
+  display: flex !important;
 }
 body.focus-mode .workspace { height: 100vh; }
 body.focus-mode #view-preview,

@@ -133,8 +133,40 @@ function resolveLocalImages(container) {
   });
 }
 
+function renderMath(source) {
+  if (!window.katex) return source;
+  const store = [];
+
+  // Extract block math $$...$$ first (before inline, to avoid double-processing)
+  source = source.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+    store.push({ tex: tex.trim(), display: true });
+    return `\x02MATH${store.length - 1}BLOCK\x03`;
+  });
+  // Extract inline math $...$ (avoid $$ and empty)
+  source = source.replace(/\$([^\n$\\][^$]*?[^\n$\\]?)\$/g, (_, tex) => {
+    if (!tex.trim()) return `$${tex}$`;
+    store.push({ tex: tex.trim(), display: false });
+    return `\x02MATH${store.length - 1}INLINE\x03`;
+  });
+
+  let html = window.marked.parse(source);
+
+  // Replace placeholders with KaTeX output
+  html = html.replace(/\x02MATH(\d+)(BLOCK|INLINE)\x03/g, (_, idx) => {
+    const { tex, display } = store[parseInt(idx)];
+    try {
+      return window.katex.renderToString(tex, { displayMode: display, throwOnError: false });
+    } catch (_) {
+      return `<code class="math-error">${tex}</code>`;
+    }
+  });
+
+  return html;
+}
+
 function renderInto(markdown, container) {
-  container.innerHTML = window.marked.parse(markdown ?? "");
+  const html = renderMath(markdown ?? "");
+  container.innerHTML = html;
   container.querySelectorAll("pre code").forEach((block) => {
     try { window.hljs.highlightElement(block); } catch (_) {}
   });

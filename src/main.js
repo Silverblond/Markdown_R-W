@@ -4,65 +4,66 @@ const dialog = window.__TAURI__.dialog;
 const opener = window.__TAURI__.opener;
 
 // ---------- State ----------
-let currentPath = null; // absolute path of the open file, or null
-let currentText = ""; // last-saved content
-let dirty = false; // unsaved edits in the editor
-let mode = "preview"; // preview | source | edit
+let currentPath = null;
+let currentText = "";
+let dirty = false;
+let mode = "preview";
+let sidebarOpen = true;
 
 const MD_FILTERS = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] },
   { name: "All Files", extensions: ["*"] },
 ];
+const RECENT_KEY = "md_viewer_recent";
+const RECENT_MAX = 10;
 
 // ---------- Elements ----------
 const $ = (id) => document.getElementById(id);
 const els = {
-  preview: $("view-preview"),
-  source: $("view-source").querySelector("code"),
-  sourcePre: $("view-source"),
-  edit: $("view-edit"),
-  editor: $("editor"),
-  editPreview: $("edit-preview"),
-  dropzone: $("dropzone"),
-  filename: $("filename"),
-  btnSave: $("btn-save"),
-  btnScrollTop: $("btn-scroll-top"),
-  statusLeft: $("status-left"),
-  statusRight: $("status-right"),
+  preview:       $("view-preview"),
+  source:        $("view-source").querySelector("code"),
+  sourcePre:     $("view-source"),
+  edit:          $("view-edit"),
+  editor:        $("editor"),
+  editPreview:   $("edit-preview"),
+  welcome:       $("welcome"),
+  filename:      $("filename"),
+  btnSave:       $("btn-save"),
+  btnScrollTop:  $("btn-scroll-top"),
+  sidebar:       $("sidebar"),
+  sidebarTree:   $("sidebar-tree"),
+  recentSection: $("recent-section"),
+  recentList:    $("recent-list"),
+  statusLeft:    $("status-left"),
+  statusRight:   $("status-right"),
 };
 
 // ---------- Markdown rendering ----------
-
-// GFM 스타일 헤딩 ID 생성: "My Heading" → "my-heading"
-function toHeadingId(rawText) {
-  return rawText
-    .toLowerCase()
-    .replace(/[^\w\s가-힣぀-ヿ一-鿿-]/g, "")
+function toHeadingId(raw) {
+  return raw.toLowerCase()
+    .replace(/[^\w\s가-힣぀-ヿ一-鿿]/g, "")
     .trim()
     .replace(/\s+/g, "-");
 }
 
-// 헤딩에 id를 붙여주는 커스텀 렌더러 (앵커 링크 타겟용)
-const headingRenderer = {
-  heading({ text, depth, raw }) {
-    const id = toHeadingId(raw);
-    return `<h${depth} id="${id}">${text}</h${depth}>\n`;
+window.marked.use({
+  gfm: true,
+  breaks: false,
+  renderer: {
+    heading({ text, depth, raw }) {
+      return `<h${depth} id="${toHeadingId(raw)}">${text}</h${depth}>\n`;
+    },
   },
-};
-window.marked.use({ renderer: headingRenderer, gfm: true, breaks: false });
+});
 
 function renderInto(markdown, container) {
   container.innerHTML = window.marked.parse(markdown ?? "");
   container.querySelectorAll("pre code").forEach((block) => {
-    try {
-      window.hljs.highlightElement(block);
-    } catch (_) {
-      /* unknown language — leave as-is */
-    }
+    try { window.hljs.highlightElement(block); } catch (_) {}
   });
 }
 
-// ---------- View management ----------
+// ---------- View ----------
 function setMode(next) {
   mode = next;
   document.querySelectorAll(".modes button").forEach((b) => {
@@ -71,7 +72,6 @@ function setMode(next) {
   els.preview.classList.toggle("hidden", next !== "preview");
   els.sourcePre.classList.toggle("hidden", next !== "source");
   els.edit.classList.toggle("hidden", next !== "edit");
-
   refreshActiveView();
   if (next === "edit") els.editor.focus();
   els.btnScrollTop?.classList.add("hidden");
@@ -79,18 +79,52 @@ function setMode(next) {
 }
 
 function refreshActiveView() {
-  const text = mode === "edit" ? els.editor.value : currentText;
   if (mode === "preview") {
     renderInto(currentText, els.preview);
   } else if (mode === "source") {
     els.source.textContent = currentText;
     els.source.className = "language-markdown";
-    try {
-      window.hljs.highlightElement(els.source);
-    } catch (_) {}
+    try { window.hljs.highlightElement(els.source); } catch (_) {}
   } else if (mode === "edit") {
-    renderInto(text, els.editPreview);
+    renderInto(els.editor.value, els.editPreview);
   }
+}
+
+// ---------- Recent files ----------
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; }
+  catch (_) { return []; }
+}
+
+function addRecent(path) {
+  const name = baseName(path);
+  let list = loadRecent().filter((r) => r.path !== path);
+  list.unshift({ path, name });
+  if (list.length > RECENT_MAX) list = list.slice(0, RECENT_MAX);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+}
+
+function renderRecentList() {
+  const list = loadRecent();
+  if (!list.length) {
+    els.recentSection.classList.add("hidden");
+    return;
+  }
+  els.recentSection.classList.remove("hidden");
+  els.recentList.innerHTML = "";
+  list.forEach(({ path, name }) => {
+    const li = document.createElement("li");
+    li.className = "recent-item";
+    const dir = path.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+    li.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;color:var(--text-dim)">
+        <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+      </svg>
+      <span class="recent-item-name">${name}</span>
+      <span class="recent-item-path">${dir}</span>`;
+    li.addEventListener("click", () => openPath(path));
+    els.recentList.appendChild(li);
+  });
 }
 
 // ---------- File operations ----------
@@ -98,15 +132,25 @@ function baseName(p) {
   return p.replace(/\\/g, "/").split("/").pop();
 }
 
+function markActiveTreeItem(path) {
+  els.sidebarTree.querySelectorAll(".tree-file").forEach((el) => {
+    el.classList.toggle("active", el.dataset.path === path);
+  });
+}
+
 function setContent(text, path) {
   currentText = text;
   currentPath = path ?? null;
   dirty = false;
   els.editor.value = text;
-  els.dropzone.classList.add("hidden");
+  els.welcome.classList.add("hidden");
   els.btnSave.disabled = false;
   els.filename.textContent = path ? baseName(path) : "(제목 없음)";
   document.title = path ? `${baseName(path)} — Markdown Viewer` : "Markdown Viewer";
+  if (path) {
+    addRecent(path);
+    markActiveTreeItem(path);
+  }
   refreshActiveView();
   refreshStatus();
 }
@@ -121,15 +165,28 @@ async function openPath(path) {
   }
 }
 
-async function openDialog() {
+async function openFileDialog() {
   const selected = await dialog.open({ multiple: false, filters: MD_FILTERS });
   if (selected) await openPath(selected);
 }
 
-async function save() {
-  // pull latest edits if we're editing
-  if (mode === "edit") currentText = els.editor.value;
+async function openDirDialog() {
+  const selected = await dialog.open({ multiple: false, directory: true });
+  if (selected) await loadDirectory(selected);
+}
 
+async function loadDirectory(dirPath) {
+  try {
+    const tree = await invoke("read_dir_tree", { path: dirPath });
+    renderFileTree(tree);
+    if (!sidebarOpen) toggleSidebar();
+  } catch (e) {
+    els.sidebarTree.innerHTML = `<p class="tree-hint">${e}</p>`;
+  }
+}
+
+async function save() {
+  if (mode === "edit") currentText = els.editor.value;
   let path = currentPath;
   if (!path) {
     path = await dialog.save({ filters: MD_FILTERS, defaultPath: "untitled.md" });
@@ -143,19 +200,59 @@ async function save() {
     document.title = `${baseName(path)} — Markdown Viewer`;
     refreshActiveView();
     flashStatus("저장됨");
-  } catch (e) {
-    alert(e);
+  } catch (e) { alert(e); }
+}
+
+// ---------- File tree rendering ----------
+function renderFileTree(node) {
+  els.sidebarTree.innerHTML = "";
+  els.sidebarTree.appendChild(buildTreeNode(node, true));
+  if (currentPath) markActiveTreeItem(currentPath);
+}
+
+function buildTreeNode(node, isRoot = false) {
+  if (node.is_dir) {
+    const details = document.createElement("details");
+    details.className = "tree-dir";
+    details.open = isRoot || node.children.length <= 20;
+
+    const summary = document.createElement("summary");
+    summary.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0">
+        <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31z"/>
+      </svg>
+      ${node.name}`;
+    details.appendChild(summary);
+
+    const children = document.createElement("div");
+    children.className = "tree-children";
+    node.children.forEach((child) => children.appendChild(buildTreeNode(child)));
+    details.appendChild(children);
+    return details;
+  } else {
+    const div = document.createElement("div");
+    div.className = "tree-file";
+    div.dataset.path = node.path;
+    div.textContent = node.name;
+    div.addEventListener("click", () => openPath(node.path));
+    return div;
   }
+}
+
+// ---------- Sidebar ----------
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  els.sidebar.classList.toggle("collapsed", !sidebarOpen);
 }
 
 // ---------- Status bar ----------
 function refreshStatus() {
   const text = mode === "edit" ? els.editor.value : currentText;
-  const chars = text.length;
   const words = (text.trim().match(/\S+/g) || []).length;
   const lines = text ? text.split("\n").length : 0;
   els.statusLeft.textContent = currentPath ? currentPath + (dirty ? " •" : "") : "";
-  els.statusRight.textContent = `${lines}줄 · ${words}단어 · ${chars}자`;
+  els.statusRight.textContent = currentPath
+    ? `${lines}줄 · ${words}단어 · ${text.length}자` : "";
 }
 
 let flashTimer = null;
@@ -170,75 +267,51 @@ function applyTheme(next) {
   document.documentElement.setAttribute("data-theme", next);
   $("hljs-light").disabled = next === "dark";
   $("hljs-dark").disabled = next !== "dark";
-  $("btn-theme").textContent = next === "dark" ? "☀️" : "🌙";
+  $("icon-moon").style.display = next === "dark" ? "none" : "";
+  $("icon-sun").style.display = next === "dark" ? "" : "none";
   localStorage.setItem("theme", next);
 }
 
 function toggleTheme() {
-  const dark = document.documentElement.getAttribute("data-theme") === "dark";
-  applyTheme(dark ? "light" : "dark");
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 }
 
-// ---------- Wiring ----------
-function wire() {
-  $("btn-open").addEventListener("click", openDialog);
-  $("btn-open-empty").addEventListener("click", openDialog);
-  $("btn-save").addEventListener("click", save);
-  $("btn-theme").addEventListener("click", toggleTheme);
+// ---------- Drag & drop ----------
+async function wireDragDrop() {
+  const onPaths = (paths) => { if (paths?.length) openPath(paths[0]); };
+  try {
+    await window.__TAURI__.webview.getCurrentWebview().onDragDropEvent((e) => {
+      const t = e.payload?.type;
+      if (t === "enter" || t === "over") document.body.classList.add("drag-over");
+      else if (t === "leave") document.body.classList.remove("drag-over");
+      else if (t === "drop") { document.body.classList.remove("drag-over"); onPaths(e.payload?.paths); }
+    });
+  } catch (_) {
+    listen("tauri://drag-enter", () => document.body.classList.add("drag-over"));
+    listen("tauri://drag-leave", () => document.body.classList.remove("drag-over"));
+    listen("tauri://drag-drop", (e) => { document.body.classList.remove("drag-over"); onPaths(e.payload?.paths); });
+  }
+}
 
-  // Scroll-to-top button: 현재 활성 스크롤 컨테이너 기준으로 표시/숨김
-  function getScrollPane() {
+// ---------- Scroll-to-top ----------
+function wireScrollTop() {
+  function getPane() {
     if (mode === "edit") return els.editPreview;
     if (mode === "source") return els.sourcePre;
     return els.preview;
   }
-
-  function updateScrollTopBtn() {
-    const pane = getScrollPane();
-    els.btnScrollTop.classList.toggle("hidden", pane.scrollTop < 200);
-  }
-
-  [els.preview, els.editPreview, els.sourcePre].forEach((pane) => {
-    pane.addEventListener("scroll", updateScrollTopBtn, { passive: true });
+  [els.preview, els.editPreview, els.sourcePre].forEach((p) => {
+    p.addEventListener("scroll", () => {
+      els.btnScrollTop.classList.toggle("hidden", getPane().scrollTop < 200);
+    }, { passive: true });
   });
-
   els.btnScrollTop.addEventListener("click", () => {
-    getScrollPane().scrollTo({ top: 0, behavior: "smooth" });
+    getPane().scrollTo({ top: 0, behavior: "smooth" });
   });
+}
 
-  document.querySelectorAll(".modes button").forEach((b) => {
-    b.addEventListener("click", () => setMode(b.dataset.mode));
-  });
-
-  // Live preview + dirty tracking while editing
-  let renderTimer = null;
-  els.editor.addEventListener("input", () => {
-    dirty = els.editor.value !== currentText;
-    clearTimeout(renderTimer);
-    renderTimer = setTimeout(() => {
-      renderInto(els.editor.value, els.editPreview);
-    }, 150);
-    refreshStatus();
-  });
-
-  // Keyboard shortcuts
-  window.addEventListener("keydown", (e) => {
-    const mod = e.metaKey || e.ctrlKey;
-    if (!mod) return;
-    const k = e.key.toLowerCase();
-    if (k === "o") {
-      e.preventDefault();
-      openDialog();
-    } else if (k === "s") {
-      e.preventDefault();
-      save();
-    } else if (k === "e") {
-      e.preventDefault();
-      setMode(mode === "edit" ? "preview" : "edit");
-    }
-  });
-
-  // Link clicks in rendered preview
+// ---------- Link clicks ----------
+function wireLinkClicks() {
   [els.preview, els.editPreview].forEach((container) => {
     container.addEventListener("click", (e) => {
       const a = e.target.closest("a[href]");
@@ -246,74 +319,79 @@ function wire() {
       e.preventDefault();
       const href = a.getAttribute("href");
       if (!href) return;
-
       if (href.startsWith("http://") || href.startsWith("https://")) {
-        // 외부 URL → 기본 브라우저로 열기
         opener.openUrl(href).catch(() => {});
       } else if (href.startsWith("#")) {
-        // 문서 내 앵커 → 헤딩 id로 찾아서 스크롤
         const id = decodeURIComponent(href.slice(1));
-        const target = container.querySelector(`#${CSS.escape(id)}`);
-        target?.scrollIntoView({ behavior: "smooth" });
+        container.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ behavior: "smooth" });
       } else if (href.match(/\.(md|markdown|mdown|mkd|txt)$/i)) {
-        // 상대 경로 마크다운 파일 → 앱에서 열기
-        const base = currentPath
-          ? currentPath.replace(/\\/g, "/").replace(/\/[^/]+$/, "")
-          : null;
-        const resolved = base ? `${base}/${href}` : href;
-        openPath(resolved);
+        const base = currentPath?.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+        openPath(base ? `${base}/${href}` : href);
       }
     });
   });
+}
 
-  // Tab inserts two spaces in the editor instead of moving focus
+// ---------- Wiring ----------
+function wire() {
+  $("btn-sidebar-toggle").addEventListener("click", toggleSidebar);
+  $("btn-open").addEventListener("click", openFileDialog);
+  $("btn-open-dir").addEventListener("click", openDirDialog);
+  $("btn-save").addEventListener("click", save);
+  $("btn-theme").addEventListener("click", toggleTheme);
+  $("btn-welcome-file").addEventListener("click", openFileDialog);
+  $("btn-welcome-dir").addEventListener("click", openDirDialog);
+
+  document.querySelectorAll(".modes button").forEach((b) => {
+    b.addEventListener("click", () => setMode(b.dataset.mode));
+  });
+
+  // live edit preview + dirty tracking
+  let renderTimer = null;
+  els.editor.addEventListener("input", () => {
+    dirty = els.editor.value !== currentText;
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => renderInto(els.editor.value, els.editPreview), 150);
+    refreshStatus();
+  });
+
+  // Tab → two spaces
   els.editor.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const s = els.editor.selectionStart;
-      const en = els.editor.selectionEnd;
-      els.editor.value = els.editor.value.slice(0, s) + "  " + els.editor.value.slice(en);
-      els.editor.selectionStart = els.editor.selectionEnd = s + 2;
-    }
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    const s = els.editor.selectionStart, en = els.editor.selectionEnd;
+    els.editor.value = els.editor.value.slice(0, s) + "  " + els.editor.value.slice(en);
+    els.editor.selectionStart = els.editor.selectionEnd = s + 2;
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === "o") { e.preventDefault(); openFileDialog(); }
+    else if (k === "s") { e.preventDefault(); save(); }
+    else if (k === "e") { e.preventDefault(); setMode(mode === "edit" ? "preview" : "edit"); }
+    else if (k === "b") { e.preventDefault(); toggleSidebar(); }
   });
 }
 
-// ---------- Drag & drop (Tauri native file drop) ----------
-async function wireDragDrop() {
-  const onPaths = (paths) => {
-    if (paths && paths.length) openPath(paths[0]);
-  };
-  try {
-    const webview = window.__TAURI__.webview.getCurrentWebview();
-    await webview.onDragDropEvent((event) => {
-      const t = event.payload?.type;
-      if (t === "enter" || t === "over") document.body.classList.add("drag-over");
-      else if (t === "leave") document.body.classList.remove("drag-over");
-      else if (t === "drop") {
-        document.body.classList.remove("drag-over");
-        onPaths(event.payload?.paths);
-      }
-    });
-  } catch (_) {
-    listen("tauri://drag-enter", () => document.body.classList.add("drag-over"));
-    listen("tauri://drag-leave", () => document.body.classList.remove("drag-over"));
-    listen("tauri://drag-drop", (e) => {
-      document.body.classList.remove("drag-over");
-      onPaths(e.payload?.paths);
-    });
-  }
-}
-
-// ---------- Startup ----------
+// ---------- Init ----------
 async function init() {
-  applyTheme(localStorage.getItem("theme") || "light");
+  // Apply saved/system theme before anything renders
+  const saved = localStorage.getItem("theme") ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(saved);
+
   wire();
+  wireScrollTop();
+  wireLinkClicks();
   await wireDragDrop();
 
-  // File opened via association / "Open With" while the app is running
-  listen("open-file", (e) => {
-    if (e.payload) openPath(e.payload);
-  });
+  // Render recent files on welcome screen
+  renderRecentList();
+
+  // File opened while app is running (macOS "Open With")
+  listen("open-file", (e) => { if (e.payload) openPath(e.payload); });
 
   // File the app was launched with
   try {

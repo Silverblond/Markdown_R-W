@@ -308,26 +308,45 @@ function resolveLocalImages(container) {
 }
 
 function renderMath(source) {
-  if (!window.katex) return source;
-  const store = [];
+  if (!window.katex) return window.marked.parse(source);
 
-  // Extract block math $$...$$ first (before inline, to avoid double-processing)
-  source = source.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
-    store.push({ tex: tex.trim(), display: true });
-    return `\x02MATH${store.length - 1}BLOCK\x03`;
+  const codeStore = [];
+  const mathStore = [];
+
+  // Step 1: Protect code regions so their $ signs are never treated as math.
+  // Fenced code blocks  ```lang\n...\n```  or  ~~~lang\n...\n~~~
+  let safe = source.replace(/(```[^\n]*\n[\s\S]*?```|~~~[^\n]*\n[\s\S]*?~~~)/g, (m) => {
+    codeStore.push(m);
+    return `\x02CODE${codeStore.length - 1}\x03`;
   });
-  // Extract inline math $...$ (avoid $$ and empty)
-  source = source.replace(/\$([^\n$\\][^$]*?[^\n$\\]?)\$/g, (_, tex) => {
+  // Inline code  `...`  (single backtick, no newline inside)
+  safe = safe.replace(/`[^`\n]+`/g, (m) => {
+    codeStore.push(m);
+    return `\x02CODE${codeStore.length - 1}\x03`;
+  });
+
+  // Step 2: Extract math from code-safe source
+  // Block math $$...$$ first (before inline, to avoid double-processing)
+  safe = safe.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+    mathStore.push({ tex: tex.trim(), display: true });
+    return `\x02MATH${mathStore.length - 1}BLOCK\x03`;
+  });
+  // Inline math $...$ (avoid $$ and empty)
+  safe = safe.replace(/\$([^\n$\\][^$]*?[^\n$\\]?)\$/g, (_, tex) => {
     if (!tex.trim()) return `$${tex}$`;
-    store.push({ tex: tex.trim(), display: false });
-    return `\x02MATH${store.length - 1}INLINE\x03`;
+    mathStore.push({ tex: tex.trim(), display: false });
+    return `\x02MATH${mathStore.length - 1}INLINE\x03`;
   });
 
-  let html = window.marked.parse(source);
+  // Step 3: Restore code blocks before marked.parse so marked handles them normally
+  safe = safe.replace(/\x02CODE(\d+)\x03/g, (_, i) => codeStore[parseInt(i)]);
 
-  // Replace placeholders with KaTeX output
+  // Step 4: Parse markdown (code blocks are rendered by marked, math placeholders pass through)
+  let html = window.marked.parse(safe);
+
+  // Step 5: Replace math placeholders with KaTeX output
   html = html.replace(/\x02MATH(\d+)(BLOCK|INLINE)\x03/g, (_, idx) => {
-    const { tex, display } = store[parseInt(idx)];
+    const { tex, display } = mathStore[parseInt(idx)];
     try {
       return window.katex.renderToString(tex, { displayMode: display, throwOnError: false });
     } catch (_) {

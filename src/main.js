@@ -151,6 +151,7 @@ const MD_FILTERS = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] },
   { name: "All Files", extensions: ["*"] },
 ];
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tiff", "avif"]);
 const RECENT_KEY = "md_viewer_recent";
 const RECENT_MAX = 10;
 const SETTINGS_KEY = "md_viewer_settings";
@@ -167,6 +168,7 @@ const els = {
   welcome:        $("welcome"),
   filename:       $("filename"),
   btnSave:        $("btn-save"),
+  btnInsertImage: $("btn-insert-image"),
   btnScrollTop:   $("btn-scroll-top"),
   sidebar:        $("sidebar"),
   sidebarTree:    $("sidebar-tree"),
@@ -248,6 +250,45 @@ function normalizePath(p) {
     else if (part !== ".") result.push(part);
   }
   return result.join("/");
+}
+
+// ---------- Image helpers (feat #40) ----------
+function isImagePath(p) {
+  const ext = p.replace(/\\/g, "/").split("/").pop().split(".").pop().toLowerCase();
+  return IMAGE_EXTS.has(ext);
+}
+
+/** 현재 문서 위치 기준 이미지 상대경로 계산. 문서가 없거나 다른 드라이브면 절대경로 반환 */
+function relativeImagePath(absImg) {
+  const img = absImg.replace(/\\/g, "/");
+  if (!currentPath) return img;
+  const docDir = currentPath.replace(/\\/g, "/").replace(/\/[^/]+$/, "");
+  const imgParts = img.split("/");
+  const docParts = docDir.split("/");
+  let common = 0;
+  while (common < imgParts.length && common < docParts.length && imgParts[common] === docParts[common]) common++;
+  if (common === 0) return img; // 다른 드라이브
+  const ups = Array(docParts.length - common).fill("..");
+  return [...ups, ...imgParts.slice(common)].join("/");
+}
+
+/** 에디터 커서 위치에 텍스트 삽입 후 input 이벤트 발생 */
+function insertAtCursor(text) {
+  const el = els.editor;
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  el.value = el.value.slice(0, start) + text + el.value.slice(end);
+  el.selectionStart = el.selectionEnd = start + text.length;
+  el.dispatchEvent(new Event("input"));
+  el.focus();
+}
+
+/** 이미지 경로로 ![alt](path) 마크다운을 커서에 삽입 */
+function insertImageMarkdown(absPath) {
+  const rel = relativeImagePath(absPath);
+  const alt = absPath.replace(/\\/g, "/").split("/").pop().replace(/\.[^.]+$/, "");
+  if (mode !== "edit") setMode("edit");
+  insertAtCursor(`![${alt}](${rel})`);
 }
 
 function resolveLocalImages(container) {
@@ -390,6 +431,7 @@ function setMode(next) {
   els.preview.classList.toggle("hidden", next !== "preview");
   els.sourcePre.classList.toggle("hidden", next !== "source");
   els.edit.classList.toggle("hidden", next !== "edit");
+  if (els.btnInsertImage) els.btnInsertImage.disabled = (next !== "edit");
   refreshActiveView();
   if (next === "edit") els.editor.focus();
   els.btnScrollTop?.classList.add("hidden");
@@ -800,7 +842,13 @@ function toggleTheme() {
 
 // ---------- Drag & drop ----------
 async function wireDragDrop() {
-  const onPaths = (paths) => { if (paths?.length) openPath(paths[0]); };
+  // feat #40: 이미지 파일이면 에디터에 마크다운 삽입, 그 외는 문서로 열기
+  const onPaths = (paths) => {
+    if (!paths?.length) return;
+    const p = paths[0];
+    if (isImagePath(p)) insertImageMarkdown(p);
+    else openPath(p);
+  };
   try {
     await window.__TAURI__.webview.getCurrentWebview().onDragDropEvent((e) => {
       const t = e.payload?.type;
@@ -940,6 +988,18 @@ function wire() {
   $("btn-open-dir").addEventListener("click", openDirDialog);
   $("btn-save").addEventListener("click", save);
   $("btn-theme").addEventListener("click", toggleTheme);
+
+  // Image insert (feat #40)
+  $("btn-insert-image").addEventListener("click", async () => {
+    const selected = await dialog.open({
+      multiple: false,
+      filters: [
+        { name: "이미지", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (selected) insertImageMarkdown(selected);
+  });
   $("btn-welcome-file").addEventListener("click", openFileDialog);
   $("btn-welcome-dir").addEventListener("click", openDirDialog);
 

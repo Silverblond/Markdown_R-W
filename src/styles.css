@@ -566,6 +566,86 @@ body.drag-over .welcome {
 .markdown-body input[type="checkbox"] { margin-right: 6px; }
 
 /* ============================================================
+   Tab bar (issue #28)
+   ============================================================ */
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  scrollbar-width: none;
+  min-height: 0;
+}
+.tab-bar:empty { display: none; }
+.tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 34px;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+  position: relative;
+}
+.tab-item:hover { background: var(--hover); color: var(--text); }
+.tab-item.active {
+  background: var(--bg);
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+.tab-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+.tab-item:hover .tab-close,
+.tab-item.active .tab-close { opacity: 1; }
+.tab-close:hover { background: var(--hover); color: var(--text); }
+
+/* New tab button inside tab-bar */
+.tab-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.tab-new-btn:hover { color: var(--text); background: var(--hover); }
+
+/* ============================================================
    File-changed notification bar
    ============================================================ */
 .file-changed-bar {
@@ -721,6 +801,7 @@ mark.search-match.current {
 body.focus-mode #toolbar,
 body.focus-mode #sidebar,
 body.focus-mode #statusbar,
+body.focus-mode .tab-bar,
 body.focus-mode .file-changed-bar {
   display: none !important;
 }
@@ -832,7 +913,7 @@ body.focus-mode #edit-preview {
    Print styles
    ============================================================ */
 @media print {
-  #toolbar, #sidebar, #statusbar, .search-bar,
+  #toolbar, #sidebar, #statusbar, .tab-bar, .search-bar,
   .file-changed-bar, #btn-scroll-top, .settings-panel { display: none !important; }
   body { overflow: visible; height: auto; }
   .workspace { height: auto; overflow: visible; }

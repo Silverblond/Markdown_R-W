@@ -349,6 +349,156 @@ function renderInto(markdown, container) {
   wireCheckboxes(container); // feat #38
 }
 
+// ---------- Emoji autocomplete (feat #39) ----------
+const EMOJI_MAX_RESULTS = 8;
+const EMOJI_MIN_QUERY   = 1; // ':' + 최소 1글자
+
+let emojiActiveIdx = -1;
+let emojiMatches   = [];
+let emojiQuery     = "";   // ':' 뒤 현재 입력
+
+function emojiDropdownActive() {
+  return !$("emoji-dropdown").classList.contains("hidden");
+}
+
+/** 커서 직전 ':word' 패턴을 반환. 없으면 null */
+function getEmojiQueryFromCursor() {
+  const ta = els.editor;
+  const before = ta.value.slice(0, ta.selectionStart);
+  const m = before.match(/:([a-z0-9_+-]*)$/);
+  if (!m) return null;
+  return m[1]; // ':' 뒤 글자들 (빈 문자열 포함)
+}
+
+function openEmojiDropdown(query) {
+  if (!window.EMOJI_DATA) return;
+  const dd = $("emoji-dropdown");
+  const entries = Object.entries(window.EMOJI_DATA);
+  emojiMatches = query.length < EMOJI_MIN_QUERY
+    ? []
+    : entries.filter(([k]) => k.startsWith(query)).slice(0, EMOJI_MAX_RESULTS);
+
+  if (!emojiMatches.length) { closeEmojiDropdown(); return; }
+
+  emojiActiveIdx = 0;
+  renderEmojiDropdown();
+  positionEmojiDropdown();
+  dd.classList.remove("hidden");
+}
+
+function renderEmojiDropdown() {
+  const dd = $("emoji-dropdown");
+  dd.innerHTML = emojiMatches.map(([key, emoji], i) =>
+    `<div class="emoji-item${i === emojiActiveIdx ? " active" : ""}" data-idx="${i}" role="option">
+       <span class="emoji-char">${emoji}</span>
+       <span class="emoji-key">:${key}:</span>
+     </div>`
+  ).join("");
+  dd.querySelectorAll(".emoji-item").forEach((item) => {
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // blur 방지
+      confirmEmoji(parseInt(item.dataset.idx));
+    });
+  });
+}
+
+function positionEmojiDropdown() {
+  const ta = els.editor;
+  const dd = $("emoji-dropdown");
+  // textarea 기준 커서 좌표 추정 — mirror div 기법
+  const mirror = document.createElement("div");
+  const style = getComputedStyle(ta);
+  ["fontFamily","fontSize","fontWeight","lineHeight","letterSpacing",
+   "padding","border","boxSizing","whiteSpace","overflowWrap","wordBreak"].forEach(
+    (p) => { mirror.style[p] = style[p]; }
+  );
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.width = ta.offsetWidth + "px";
+  mirror.style.height = "auto";
+  mirror.style.overflow = "hidden";
+
+  const before = ta.value.slice(0, ta.selectionStart);
+  const textNode = document.createTextNode(before);
+  const caret = document.createElement("span");
+  caret.textContent = "|";
+  mirror.appendChild(textNode);
+  mirror.appendChild(caret);
+  document.body.appendChild(mirror);
+
+  const taRect  = ta.getBoundingClientRect();
+  const caretRect = caret.getBoundingClientRect();
+  const mirrorRect = mirror.getBoundingClientRect();
+
+  const x = taRect.left  + (caretRect.left - mirrorRect.left) - ta.scrollLeft;
+  const y = taRect.top   + (caretRect.top  - mirrorRect.top)  - ta.scrollTop + parseFloat(style.lineHeight);
+  document.body.removeChild(mirror);
+
+  // 화면 아래로 넘치면 위에 표시
+  const ddH = dd.offsetHeight || 240;
+  const top = (y + ddH > window.innerHeight - 8) ? y - ddH - parseFloat(style.lineHeight) : y;
+  dd.style.left = Math.min(x, window.innerWidth - dd.offsetWidth - 8) + "px";
+  dd.style.top  = Math.max(8, top) + "px";
+}
+
+function closeEmojiDropdown() {
+  $("emoji-dropdown").classList.add("hidden");
+  emojiMatches = [];
+  emojiActiveIdx = -1;
+  emojiQuery = "";
+}
+
+function confirmEmoji(idx) {
+  const [key, emoji] = emojiMatches[idx ?? emojiActiveIdx];
+  const ta = els.editor;
+  const pos = ta.selectionStart;
+  const before = ta.value.slice(0, pos);
+  // ':query' 부분을 이모지로 교체
+  const replaced = before.replace(/:([a-z0-9_+-]*)$/, emoji);
+  ta.value = replaced + ta.value.slice(pos);
+  ta.selectionStart = ta.selectionEnd = replaced.length;
+  closeEmojiDropdown();
+  ta.dispatchEvent(new Event("input")); // dirty + 미리보기 갱신
+  ta.focus();
+}
+
+/** 드롭다운 열림 상태일 때 키 이벤트 처리. 가로채면 true 반환 */
+function handleEmojiKey(e) {
+  if (!emojiDropdownActive()) return false;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    emojiActiveIdx = (emojiActiveIdx + 1) % emojiMatches.length;
+    renderEmojiDropdown();
+    return true;
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    emojiActiveIdx = (emojiActiveIdx - 1 + emojiMatches.length) % emojiMatches.length;
+    renderEmojiDropdown();
+    return true;
+  }
+  if (e.key === "Enter" || e.key === "Tab") {
+    e.preventDefault();
+    confirmEmoji(emojiActiveIdx);
+    return true;
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeEmojiDropdown();
+    return true;
+  }
+  return false;
+}
+
+/** editor input 이벤트마다 호출 — 드롭다운 열기/갱신/닫기 */
+function updateEmojiDropdown() {
+  if (mode !== "edit") return;
+  const q = getEmojiQueryFromCursor();
+  if (q === null) { closeEmojiDropdown(); return; }
+  emojiQuery = q;
+  openEmojiDropdown(q);
+}
+
 // ---------- Callout / Toggle blocks (feat #37) ----------
 const CALLOUT_ICONS = {
   note: "ℹ️", info: "ℹ️",
@@ -1112,15 +1262,22 @@ function wire() {
       buildToc(els.editPreview);
     }, 150);
     refreshStatus();
+    updateEmojiDropdown(); // feat #39
   });
 
-  // Tab → two spaces
+  // Tab → 이모지 확정(드롭다운 열림) or 두 칸 들여쓰기
   els.editor.addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;
+    if (emojiDropdownActive() && handleEmojiKey(e)) return; // feat #39
     e.preventDefault();
     const s = els.editor.selectionStart, en = els.editor.selectionEnd;
     els.editor.value = els.editor.value.slice(0, s) + "  " + els.editor.value.slice(en);
     els.editor.selectionStart = els.editor.selectionEnd = s + 2;
+  });
+
+  // 이모지 드롭다운 키 핸들러 (feat #39): ↑↓Enter·Esc를 먼저 가로챔
+  els.editor.addEventListener("keydown", (e) => {
+    if (emojiDropdownActive()) handleEmojiKey(e);
   });
 
   // Markdown formatting shortcuts (issue #26): Cmd/Ctrl + B/I/K/`

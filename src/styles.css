@@ -915,6 +915,9 @@ body.focus-mode #edit-preview {
 @media print {
   #toolbar, #sidebar, #statusbar, .tab-bar, .search-bar,
   .file-changed-bar, #btn-scroll-top, .settings-panel { display: none !important; }
+  /* 원본/편집 뷰는 숨기고 미리보기만 강제 출력 (fix #36) */
+  #view-source, #view-edit { display: none !important; }
+  #view-preview { display: block !important; }
   body { overflow: visible; height: auto; }
   .workspace { height: auto; overflow: visible; }
   #content { overflow: visible; position: static; }

@@ -889,8 +889,12 @@ function wire() {
   $("btn-welcome-file").addEventListener("click", openFileDialog);
   $("btn-welcome-dir").addEventListener("click", openDirDialog);
 
-  // Print (feature #3)
-  $("btn-print").addEventListener("click", () => window.print());
+  // Print (feature #3) — fix #36: 모드에 상관없이 항상 미리보기 렌더링 후 출력
+  $("btn-print").addEventListener("click", () => {
+    const src = mode === "edit" ? (els.editor?.value ?? currentText) : currentText;
+    if (mode !== "preview") renderInto(src, els.preview);
+    window.print();
+  });
 
   // Search (feature #2)
   $("btn-search").addEventListener("click", toggleSearch);

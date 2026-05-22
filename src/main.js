@@ -14,6 +14,139 @@ let searchOpen = false;
 let searchMatches = [];
 let searchIndex = -1;
 
+// ---------- Tab state ----------
+let tabs = [];
+let activeTabIdx = -1;
+let nextTabId = 0;
+
+function getCurrentTab() {
+  return activeTabIdx >= 0 ? tabs[activeTabIdx] : null;
+}
+
+function saveCurrentTabState() {
+  const tab = getCurrentTab();
+  if (!tab) return;
+  tab.path = currentPath;
+  tab.text = currentText;
+  tab.dirty = dirty;
+  tab.mode = mode;
+  tab.editorValue = els?.editor?.value ?? currentText;
+  tab.previewScrollTop  = els?.preview?.scrollTop ?? 0;
+  tab.sourceScrollTop   = els?.sourcePre?.scrollTop ?? 0;
+  tab.editScrollTop     = els?.editPreview?.scrollTop ?? 0;
+}
+
+function restoreTabState(tab) {
+  currentPath  = tab.path;
+  currentText  = tab.text;
+  dirty        = tab.dirty;
+  if (els.editor) els.editor.value = tab.editorValue ?? tab.text;
+  // Update header / title
+  els.filename.textContent = tab.path ? baseName(tab.path) : "(제목 없음)";
+  document.title = tab.path ? `${baseName(tab.path)} — Markdown Viewer` : "Markdown Viewer";
+  els.btnSave.disabled = false;
+  els.welcome.classList.add("hidden");
+  if (tab.path) markActiveTreeItem(tab.path);
+  setMode(tab.mode ?? "preview");
+  // Restore scroll after render settles
+  requestAnimationFrame(() => {
+    els.preview.scrollTop  = tab.previewScrollTop ?? 0;
+    els.sourcePre.scrollTop = tab.sourceScrollTop ?? 0;
+    els.editPreview.scrollTop = tab.editScrollTop ?? 0;
+  });
+  refreshStatus();
+  hideFileChangedBar();
+}
+
+function renderTabBar() {
+  const bar = $("tab-bar");
+  if (!bar) return;
+  bar.innerHTML = "";
+  if (!tabs.length) return;
+
+  tabs.forEach((tab, idx) => {
+    const el = document.createElement("div");
+    el.className = `tab-item${idx === activeTabIdx ? " active" : ""}`;
+    const name = tab.path ? baseName(tab.path) : "새 문서";
+    el.innerHTML = `
+      <span class="tab-name" title="${tab.path ?? ""}">${name}${tab.dirty ? " ●" : ""}</span>
+      <button class="tab-close" title="닫기">×</button>`;
+    el.addEventListener("click", (e) => {
+      if (e.target.classList.contains("tab-close")) { closeTab(idx); return; }
+      switchToTab(idx);
+    });
+    bar.appendChild(el);
+  });
+
+  // "+" new tab button
+  const plus = document.createElement("button");
+  plus.className = "tab-new-btn";
+  plus.title = "새 탭 (Cmd+T)";
+  plus.textContent = "+";
+  plus.addEventListener("click", () => newTab());
+  bar.appendChild(plus);
+}
+
+function newTab() {
+  saveCurrentTabState();
+  const tab = { id: nextTabId++, path: null, text: "", dirty: false, mode: "edit",
+                editorValue: "", previewScrollTop: 0, sourceScrollTop: 0, editScrollTop: 0 };
+  tabs.push(tab);
+  activeTabIdx = tabs.length - 1;
+  currentPath  = null;
+  currentText  = "";
+  dirty        = false;
+  els.editor.value = "";
+  els.welcome.classList.add("hidden");
+  els.btnSave.disabled = false;
+  els.filename.textContent = "(제목 없음)";
+  document.title = "Markdown Viewer";
+  setMode("edit");
+  els.editor.focus();
+  renderTabBar();
+}
+
+function switchToTab(idx) {
+  if (idx === activeTabIdx || idx < 0 || idx >= tabs.length) return;
+  saveCurrentTabState();
+  activeTabIdx = idx;
+  restoreTabState(tabs[idx]);
+  renderTabBar();
+}
+
+async function closeTab(idx) {
+  const tab = tabs[idx];
+  if (tab.dirty) {
+    const wantSave = await dialog.ask(
+      `"${tab.path ? baseName(tab.path) : "새 문서"}"의 변경 사항을 저장하시겠습니까?`,
+      { title: "저장하지 않은 변경 사항", okLabel: "저장", cancelLabel: "저장 안 함" }
+    );
+    if (wantSave) {
+      if (idx !== activeTabIdx) switchToTab(idx);
+      await save();
+    }
+  }
+
+  tabs.splice(idx, 1);
+
+  if (!tabs.length) {
+    activeTabIdx = -1;
+    currentPath = null; currentText = ""; dirty = false;
+    els.editor.value = "";
+    els.welcome.classList.remove("hidden");
+    els.filename.textContent = "—";
+    document.title = "Markdown Viewer";
+    els.btnSave.disabled = true;
+    renderTabBar();
+    return;
+  }
+
+  if (idx <= activeTabIdx) activeTabIdx = Math.max(0, activeTabIdx - 1);
+  activeTabIdx = Math.min(activeTabIdx, tabs.length - 1);
+  restoreTabState(tabs[activeTabIdx]);
+  renderTabBar();
+}
+
 const MD_FILTERS = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] },
   { name: "All Files", extensions: ["*"] },
@@ -285,16 +418,50 @@ function setContent(text, path) {
     addRecent(path);
     markActiveTreeItem(path);
   }
+  // Sync to active tab
+  const tab = getCurrentTab();
+  if (tab) {
+    tab.path = currentPath; tab.text = currentText;
+    tab.dirty = false; tab.editorValue = text;
+  }
   refreshActiveView();
   refreshStatus();
   hideFileChangedBar();
+  renderTabBar();
 }
 
 async function openPath(path) {
+  // If already open in another tab, switch to it
+  const existingIdx = tabs.findIndex((t) => t.path === path);
+  if (existingIdx >= 0) { switchToTab(existingIdx); return; }
+
   try {
     const text = await invoke("read_file", { path });
-    setContent(text, path);
-    setMode("preview");
+    const tab = getCurrentTab();
+    const isEmptyNewTab = tab && !tab.path && !tab.text && !tab.dirty;
+
+    if (isEmptyNewTab) {
+      // Reuse current empty/new tab
+      setContent(text, path);
+      setMode("preview");
+    } else {
+      // Open in a new tab
+      saveCurrentTabState();
+      const newTab = { id: nextTabId++, path, text, dirty: false, mode: "preview",
+                       editorValue: text, previewScrollTop: 0, sourceScrollTop: 0, editScrollTop: 0 };
+      tabs.push(newTab);
+      activeTabIdx = tabs.length - 1;
+      currentPath = path; currentText = text; dirty = false;
+      els.editor.value = text;
+      els.welcome.classList.add("hidden");
+      els.btnSave.disabled = false;
+      addRecent(path);
+      markActiveTreeItem(path);
+      els.filename.textContent = baseName(path);
+      document.title = `${baseName(path)} — Markdown Viewer`;
+      setMode("preview");
+      renderTabBar();
+    }
     try { await invoke("watch_file", { path }); } catch (_) {}
   } catch (e) {
     alert(e);
@@ -334,6 +501,10 @@ async function save() {
     dirty = false;
     els.filename.textContent = baseName(path);
     document.title = `${baseName(path)} — Markdown Viewer`;
+    // Sync to active tab
+    const tab = getCurrentTab();
+    if (tab) { tab.path = path; tab.text = currentText; tab.dirty = false; }
+    renderTabBar();
     refreshActiveView();
     flashStatus("저장됨");
   } catch (e) { alert(e); }
@@ -749,6 +920,8 @@ function wire() {
   let renderTimer = null;
   els.editor.addEventListener("input", () => {
     dirty = els.editor.value !== currentText;
+    const tab = getCurrentTab();
+    if (tab) { tab.dirty = dirty; tab.editorValue = els.editor.value; renderTabBar(); }
     clearTimeout(renderTimer);
     renderTimer = setTimeout(() => {
       renderInto(els.editor.value, els.editPreview);
@@ -826,6 +999,14 @@ function wire() {
     else if (k === "s") { e.preventDefault(); save(); }
     else if (k === "e") { e.preventDefault(); setMode(mode === "edit" ? "preview" : "edit"); }
     else if (k === "b") { e.preventDefault(); toggleSidebar(); }
+    else if (k === "t") { e.preventDefault(); newTab(); }
+    else if (k === "w") { e.preventDefault(); if (activeTabIdx >= 0) closeTab(activeTabIdx); }
+    else if (k === "tab") {
+      // Cmd+Shift+[ / Cmd+Shift+] → prev/next tab
+      if (e.shiftKey) { e.preventDefault(); switchToTab((activeTabIdx - 1 + tabs.length) % tabs.length); }
+    }
+    else if (k === "]" && e.shiftKey) { e.preventDefault(); switchToTab((activeTabIdx + 1) % tabs.length); }
+    else if (k === "[" && e.shiftKey) { e.preventDefault(); switchToTab((activeTabIdx - 1 + tabs.length) % tabs.length); }
     else if (k === "f") {
       if (e.shiftKey) { e.preventDefault(); toggleFocusMode(); }
       else { e.preventDefault(); toggleSearch(); }
@@ -842,7 +1023,8 @@ async function wireCloseGuard() {
   try {
     const appWindow = window.__TAURI__.window.getCurrentWindow();
     await appWindow.onCloseRequested(async (event) => {
-      if (!dirty) return; // nothing unsaved — let the OS close normally
+      const anyDirty = tabs.some((t) => t.dirty) || dirty;
+      if (!anyDirty) return; // nothing unsaved — let the OS close normally
       event.preventDefault();
 
       // Ask whether to save before quitting

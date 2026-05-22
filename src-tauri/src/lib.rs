@@ -115,6 +115,25 @@ fn read_dir_tree(path: String) -> Result<FileNode, String> {
         .ok_or_else(|| "마크다운 파일이 없거나 디렉터리를 읽을 수 없습니다".to_string())
 }
 
+#[tauri::command]
+fn get_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[derive(serde::Serialize)]
+struct PlatformInfo {
+    os:   String,
+    arch: String,
+}
+
+#[tauri::command]
+fn get_platform_info() -> PlatformInfo {
+    PlatformInfo {
+        os:   std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+    }
+}
+
 fn looks_like_markdown(path: &str) -> bool {
     let lower = path.to_lowercase();
     lower.ends_with(".md")
@@ -142,6 +161,8 @@ pub fn run() {
             read_dir_tree,
             watch_file,
             unwatch_file,
+            get_version,
+            get_platform_info,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

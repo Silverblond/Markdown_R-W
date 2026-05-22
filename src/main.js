@@ -1536,6 +1536,61 @@ async function wireCloseGuard() {
 }
 
 // ---------- Init ----------
+// ---------- Update check (feat #48) ----------
+/** semver 문자열 비교. a > b 면 양수, a < b 면 음수, 같으면 0 */
+function compareSemver(a, b) {
+  const pa = a.replace(/^v/, "").split(".").map(Number);
+  const pb = b.replace(/^v/, "").split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+async function checkForUpdate() {
+  try {
+    const currentVersion = await invoke("get_version");
+
+    const res = await fetch(
+      "https://api.github.com/repos/Silverblond/Markdown_R-W/releases/latest",
+      { headers: { Accept: "application/vnd.github+json" } }
+    );
+    if (!res.ok) return;
+    const release = await res.json();
+    const latestVersion = release.tag_name ?? "";
+
+    if (compareSemver(latestVersion, currentVersion) <= 0) return;
+
+    // 새 버전 존재 → 버튼 표시
+    const btn = $("btn-update");
+    $("update-label").textContent = `↑ v${latestVersion.replace(/^v/, "")}`;
+    btn.classList.remove("hidden");
+
+    btn.addEventListener("click", async () => {
+      try {
+        const { os, arch } = await invoke("get_platform_info");
+        const assets = release.assets ?? [];
+
+        let url = null;
+        if (os === "macos") {
+          const suffix = arch === "aarch64" ? "aarch64.dmg" : "x64.dmg";
+          url = assets.find((a) => a.name.endsWith(suffix))?.browser_download_url;
+        } else if (os === "windows") {
+          url = assets.find((a) => a.name.endsWith("-setup.exe"))?.browser_download_url;
+        }
+
+        // 에셋 못 찾으면 릴리즈 페이지로 fallback
+        await opener.openUrl(url ?? release.html_url);
+      } catch (_) {
+        await opener.openUrl(release.html_url);
+      }
+    }, { once: true });
+  } catch (_) {
+    // 네트워크 없음·API 오류 → 조용히 무시
+  }
+}
+
 async function init() {
   const saved = localStorage.getItem("theme") ||
     (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -1567,6 +1622,9 @@ async function init() {
     const startup = await invoke("take_startup_file");
     if (startup) await openPath(startup);
   } catch (_) {}
+
+  // 업데이트 체크 — 비동기, 실패해도 앱에 영향 없음 (feat #48)
+  checkForUpdate();
 }
 
 window.addEventListener("DOMContentLoaded", init);

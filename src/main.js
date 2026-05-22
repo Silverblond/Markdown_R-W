@@ -402,10 +402,9 @@ function renderEmojiDropdown() {
   });
 }
 
-function positionEmojiDropdown() {
+/** textarea 커서 위치 근처에 dropdown을 배치하는 공통 헬퍼 (mirror div 기법) */
+function positionDropdownNearCursor(dd) {
   const ta = els.editor;
-  const dd = $("emoji-dropdown");
-  // textarea 기준 커서 좌표 추정 — mirror div 기법
   const mirror = document.createElement("div");
   const style = getComputedStyle(ta);
   ["fontFamily","fontSize","fontWeight","lineHeight","letterSpacing",
@@ -419,26 +418,29 @@ function positionEmojiDropdown() {
   mirror.style.overflow = "hidden";
 
   const before = ta.value.slice(0, ta.selectionStart);
-  const textNode = document.createTextNode(before);
   const caret = document.createElement("span");
   caret.textContent = "|";
-  mirror.appendChild(textNode);
+  mirror.appendChild(document.createTextNode(before));
   mirror.appendChild(caret);
   document.body.appendChild(mirror);
 
-  const taRect  = ta.getBoundingClientRect();
+  const taRect   = ta.getBoundingClientRect();
   const caretRect = caret.getBoundingClientRect();
   const mirrorRect = mirror.getBoundingClientRect();
+  const lineH = parseFloat(style.lineHeight);
 
-  const x = taRect.left  + (caretRect.left - mirrorRect.left) - ta.scrollLeft;
-  const y = taRect.top   + (caretRect.top  - mirrorRect.top)  - ta.scrollTop + parseFloat(style.lineHeight);
+  const x = taRect.left + (caretRect.left - mirrorRect.left) - ta.scrollLeft;
+  const y = taRect.top  + (caretRect.top  - mirrorRect.top)  - ta.scrollTop + lineH;
   document.body.removeChild(mirror);
 
-  // 화면 아래로 넘치면 위에 표시
-  const ddH = dd.offsetHeight || 240;
-  const top = (y + ddH > window.innerHeight - 8) ? y - ddH - parseFloat(style.lineHeight) : y;
+  const ddH = dd.offsetHeight || 260;
+  const top = (y + ddH > window.innerHeight - 8) ? y - ddH - lineH : y;
   dd.style.left = Math.min(x, window.innerWidth - dd.offsetWidth - 8) + "px";
   dd.style.top  = Math.max(8, top) + "px";
+}
+
+function positionEmojiDropdown() {
+  positionDropdownNearCursor($("emoji-dropdown"));
 }
 
 function closeEmojiDropdown() {
@@ -497,6 +499,152 @@ function updateEmojiDropdown() {
   if (q === null) { closeEmojiDropdown(); return; }
   emojiQuery = q;
   openEmojiDropdown(q);
+}
+
+// ---------- Slash command menu (feat #46) ----------
+const SLASH_COMMANDS = [
+  { icon: "H1", label: "제목 1",      aliases: ["h1","제목1","heading1"],  insert: "# ",          cursor: 2 },
+  { icon: "H2", label: "제목 2",      aliases: ["h2","제목2","heading2"],  insert: "## ",         cursor: 3 },
+  { icon: "H3", label: "제목 3",      aliases: ["h3","제목3","heading3"],  insert: "### ",        cursor: 4 },
+  { icon: "—",  label: "구분선",      aliases: ["hr","divider","구분"],    insert: "---\n",       cursor: 4 },
+  { icon: "•",  label: "글머리 목록", aliases: ["ul","bullet","목록","list"], insert: "- ",       cursor: 2 },
+  { icon: "1.", label: "번호 목록",   aliases: ["ol","number","번호"],     insert: "1. ",         cursor: 3 },
+  { icon: "☐",  label: "체크박스",   aliases: ["todo","task","check","체크"], insert: "- [ ] ",  cursor: 6 },
+  { icon: ">",  label: "인용문",      aliases: ["quote","인용","blockquote"], insert: "> ",       cursor: 2 },
+  { icon: "ℹ️", label: "콜아웃 노트", aliases: ["note","callout","콜아웃"], insert: "> [!note] ", cursor: 10 },
+  { icon: "💡", label: "콜아웃 팁",  aliases: ["tip","hint"],             insert: "> [!tip] ",   cursor: 9 },
+  { icon: "⚠️", label: "콜아웃 경고", aliases: ["warning","warn","경고"],  insert: "> [!warning] ", cursor: 12 },
+  { icon: "🚨", label: "콜아웃 위험", aliases: ["danger","error","위험"],  insert: "> [!danger] ", cursor: 11 },
+  { icon: "</>", label: "코드 블록",  aliases: ["code","코드","codeblock"], insert: "```\n\n```", cursorFromEnd: 4 },
+  { icon: "∑",  label: "수식 블록",  aliases: ["math","수식","latex"],    insert: "$$\n\n$$",    cursorFromEnd: 3 },
+  { icon: "⊞",  label: "표",         aliases: ["table","표"],             insert: "| 제목 | 제목 |\n| --- | --- |\n| 내용 | 내용 |\n", cursorFromEnd: null },
+  { icon: "🖼", label: "이미지",     aliases: ["image","img","이미지"],   insert: null /* dialog */ },
+];
+
+const SLASH_MAX_RESULTS = 10;
+let slashActiveIdx = -1;
+let slashMatches   = [];
+
+function slashDropdownActive() {
+  return !$("slash-dropdown").classList.contains("hidden");
+}
+
+function getSlashQueryFromCursor() {
+  const ta = els.editor;
+  const before = ta.value.slice(0, ta.selectionStart);
+  // 줄 시작 또는 공백 뒤의 / 허용
+  const m = before.match(/(?:^|[ \t\n])\/([^\s/]*)$/);
+  if (!m) return null;
+  return m[1]; // '/' 뒤 글자들
+}
+
+function openSlashMenu(query) {
+  const q = query.toLowerCase();
+  slashMatches = SLASH_COMMANDS.filter(({ label, aliases }) =>
+    label.toLowerCase().includes(q) ||
+    aliases.some((a) => a.includes(q))
+  ).slice(0, SLASH_MAX_RESULTS);
+
+  if (!slashMatches.length) { closeSlashMenu(); return; }
+
+  slashActiveIdx = 0;
+  renderSlashMenu();
+  positionDropdownNearCursor($("slash-dropdown"));
+  $("slash-dropdown").classList.remove("hidden");
+}
+
+function renderSlashMenu() {
+  const dd = $("slash-dropdown");
+  dd.innerHTML = slashMatches.map((cmd, i) =>
+    `<div class="slash-item${i === slashActiveIdx ? " active" : ""}" data-idx="${i}" role="option">
+       <span class="slash-icon">${cmd.icon}</span>
+       <span class="slash-label">${cmd.label}</span>
+     </div>`
+  ).join("");
+  dd.querySelectorAll(".slash-item").forEach((item) => {
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      confirmSlashCommand(parseInt(item.dataset.idx));
+    });
+  });
+}
+
+function closeSlashMenu() {
+  $("slash-dropdown").classList.add("hidden");
+  slashMatches = [];
+  slashActiveIdx = -1;
+}
+
+function confirmSlashCommand(idx) {
+  const cmd = slashMatches[idx ?? slashActiveIdx];
+  const ta = els.editor;
+  const pos = ta.selectionStart;
+  const before = ta.value.slice(0, pos);
+  // '/query' 제거 (lookbehind 없이 처리)
+  const cleaned = before.replace(/(^|[\s])\/[^\s/]*$/, "$1");
+
+  closeSlashMenu();
+
+  // 이미지는 다이얼로그 호출
+  if (cmd.insert === null) {
+    ta.value = cleaned + ta.value.slice(pos);
+    ta.selectionStart = ta.selectionEnd = cleaned.length;
+    ta.dispatchEvent(new Event("input"));
+    $("btn-insert-image").click();
+    return;
+  }
+
+  const newVal = cleaned + cmd.insert + ta.value.slice(pos);
+  ta.value = newVal;
+
+  // 커서 위치: cursorFromEnd(끝에서 앞) 또는 cursor(삽입 위치에서 앞으로)
+  let cur;
+  if (cmd.cursorFromEnd != null) {
+    cur = cleaned.length + cmd.insert.length - cmd.cursorFromEnd;
+  } else if (cmd.cursor != null) {
+    cur = cleaned.length + cmd.cursor;
+  } else {
+    cur = cleaned.length + cmd.insert.length;
+  }
+  ta.selectionStart = ta.selectionEnd = cur;
+  ta.dispatchEvent(new Event("input"));
+  ta.focus();
+}
+
+function handleSlashKey(e) {
+  if (!slashDropdownActive()) return false;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    slashActiveIdx = (slashActiveIdx + 1) % slashMatches.length;
+    renderSlashMenu();
+    return true;
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    slashActiveIdx = (slashActiveIdx - 1 + slashMatches.length) % slashMatches.length;
+    renderSlashMenu();
+    return true;
+  }
+  if (e.key === "Enter" || e.key === "Tab") {
+    e.preventDefault();
+    confirmSlashCommand(slashActiveIdx);
+    return true;
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeSlashMenu();
+    return true;
+  }
+  return false;
+}
+
+function updateSlashMenu() {
+  if (mode !== "edit") return;
+  // 이모지 드롭다운 활성 중이면 슬래시 비활성
+  if (emojiDropdownActive()) { closeSlashMenu(); return; }
+  const q = getSlashQueryFromCursor();
+  if (q === null) { closeSlashMenu(); return; }
+  openSlashMenu(q);
 }
 
 // ---------- Callout / Toggle blocks (feat #37) ----------
@@ -1263,21 +1411,24 @@ function wire() {
     }, 150);
     refreshStatus();
     updateEmojiDropdown(); // feat #39
+    updateSlashMenu();     // feat #46
   });
 
-  // Tab → 이모지 확정(드롭다운 열림) or 두 칸 들여쓰기
+  // Tab → 드롭다운 확정 or 두 칸 들여쓰기
   els.editor.addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;
     if (emojiDropdownActive() && handleEmojiKey(e)) return; // feat #39
+    if (slashDropdownActive() && handleSlashKey(e)) return; // feat #46
     e.preventDefault();
     const s = els.editor.selectionStart, en = els.editor.selectionEnd;
     els.editor.value = els.editor.value.slice(0, s) + "  " + els.editor.value.slice(en);
     els.editor.selectionStart = els.editor.selectionEnd = s + 2;
   });
 
-  // 이모지 드롭다운 키 핸들러 (feat #39): ↑↓Enter·Esc를 먼저 가로챔
+  // 이모지·슬래시 드롭다운 키 핸들러: ↑↓Enter·Esc를 먼저 가로챔
   els.editor.addEventListener("keydown", (e) => {
-    if (emojiDropdownActive()) handleEmojiKey(e);
+    if (emojiDropdownActive()) { handleEmojiKey(e); return; } // feat #39
+    if (slashDropdownActive()) { handleSlashKey(e); return; } // feat #46
   });
 
   // Markdown formatting shortcuts (issue #26): Cmd/Ctrl + B/I/K/`

@@ -1011,6 +1011,53 @@ body.focus-mode #edit-preview {
 .emoji-key  { opacity: 0.8; font-family: monospace; }
 
 /* ============================================================
+   Slash command menu (feat #46)
+   ============================================================ */
+.slash-dropdown {
+  position: fixed;
+  z-index: 2000;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+  padding: 4px;
+  min-width: 200px;
+  max-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.slash-item:hover,
+.slash-item.active { background: var(--accent); color: #fff; }
+.slash-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+.slash-item.active .slash-icon {
+  background: rgba(255,255,255,0.2);
+  border-color: transparent;
+}
+.slash-label { flex: 1; }
+
+/* ============================================================
    Callout / Toggle blocks (feat #37)
    Usage: > [!note]- Optional Title  (- = collapsed, default open)
    Also: raw <details><summary>...</summary>...</details> HTML

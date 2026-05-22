@@ -563,7 +563,7 @@ body.drag-over .welcome {
 .markdown-body img { max-width: 100%; border-radius: 6px; }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
 .markdown-body ul, .markdown-body ol { padding-left: 2em; margin: 0 0 1em; }
-.markdown-body input[type="checkbox"] { margin-right: 6px; }
+.markdown-body input[type="checkbox"] { margin-right: 6px; cursor: pointer; }
 
 /* ============================================================
    Tab bar (issue #28)

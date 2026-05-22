@@ -304,6 +304,60 @@ function renderInto(markdown, container) {
     try { window.hljs.highlightElement(block); } catch (_) {}
   });
   resolveLocalImages(container);
+  wireCheckboxes(container); // feat #38
+}
+
+// ---------- Checkbox toggle (feat #38) ----------
+function wireCheckboxes(container) {
+  container.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
+    cb.removeAttribute("disabled");
+    cb.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleCheckboxAt(container, idx);
+    });
+  });
+}
+
+function toggleCheckboxAt(container, idx) {
+  const isEdit = container === els.editPreview;
+  const src = isEdit ? (els.editor?.value ?? currentText) : currentText;
+
+  let count = 0;
+  let found = false;
+  const result = src.replace(
+    /^([ \t]*(?:[-*+]|\d+[.)]) \[)([ xX])(\])/gm,
+    (m, pre, mark, post) => {
+      if (count++ === idx) {
+        found = true;
+        return pre + (mark.trim() === "" ? "x" : " ") + post;
+      }
+      return m;
+    }
+  );
+
+  if (!found) return;
+
+  // 상태 갱신 — currentText와 에디터 값을 동시에 업데이트 후 dirty 표시
+  currentText = result;
+  if (els.editor) els.editor.value = result;
+  dirty = true;
+  const tab = getCurrentTab();
+  if (tab) { tab.text = result; tab.editorValue = result; tab.dirty = true; }
+
+  // 스크롤 위치 보존하며 re-render (renderInto가 wireCheckboxes도 호출)
+  const scrollTop = container.scrollTop;
+  renderInto(result, container);
+  container.scrollTop = scrollTop;
+
+  // 활성 컨테이너면 TOC도 갱신
+  if ((mode === "preview" && container === els.preview) ||
+      (mode === "edit"    && container === els.editPreview)) {
+    buildToc(container);
+  }
+
+  renderTabBar();
+  refreshStatus();
 }
 
 // ---------- TOC (feature #1) ----------

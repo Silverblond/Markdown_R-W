@@ -981,3 +981,92 @@ body.focus-mode #edit-preview {
   border-radius: 6px;
 }
 #lightbox-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+/* ============================================================
+   Callout / Toggle blocks (feat #37)
+   Usage: > [!note]- Optional Title  (- = collapsed, default open)
+   Also: raw <details><summary>...</summary>...</details> HTML
+   ============================================================ */
+
+/* ---- 콜아웃 공통 ---- */
+.callout {
+  border-left: 4px solid var(--callout-color, var(--accent));
+  background: var(--callout-bg, rgba(100,150,255,0.06));
+  border-radius: 0 6px 6px 0;
+  margin: 1em 0;
+  overflow: hidden;
+}
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  font-size: 0.9em;
+  cursor: pointer;
+  user-select: none;
+  background: var(--callout-header-bg, rgba(100,150,255,0.1));
+  list-style: none;
+}
+.callout-title::-webkit-details-marker { display: none; }
+.callout-title-text { flex: 1; }
+.callout-icon { font-size: 1em; flex-shrink: 0; }
+.callout-chevron {
+  font-size: 0.6em;
+  opacity: 0.6;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+details[open] .callout-chevron { transform: rotate(90deg); }
+.callout-body {
+  padding: 10px 14px;
+  font-size: 0.95em;
+}
+.callout-body > *:first-child { margin-top: 0; }
+.callout-body > *:last-child  { margin-bottom: 0; }
+
+/* ---- 타입별 색상 ---- */
+.callout-note,    .callout-info    { --callout-color:#4a9eff; --callout-bg:rgba(74,158,255,.06); --callout-header-bg:rgba(74,158,255,.12); }
+.callout-tip,     .callout-hint    { --callout-color:#2ecc71; --callout-bg:rgba(46,204,113,.06); --callout-header-bg:rgba(46,204,113,.12); }
+.callout-warning, .callout-caution,
+.callout-attention               { --callout-color:#e67e22; --callout-bg:rgba(230,126,34,.06); --callout-header-bg:rgba(230,126,34,.12); }
+.callout-danger,  .callout-error  { --callout-color:#e74c3c; --callout-bg:rgba(231,76,60,.06);  --callout-header-bg:rgba(231,76,60,.12); }
+.callout-success, .callout-check,
+.callout-done                    { --callout-color:#2ecc71; --callout-bg:rgba(46,204,113,.06); --callout-header-bg:rgba(46,204,113,.12); }
+.callout-question,.callout-help,
+.callout-faq                     { --callout-color:#9b59b6; --callout-bg:rgba(155,89,182,.06); --callout-header-bg:rgba(155,89,182,.12); }
+.callout-quote,   .callout-cite   { --callout-color:#7f8c8d; --callout-bg:rgba(127,140,141,.06);--callout-header-bg:rgba(127,140,141,.12); }
+.callout-abstract,.callout-summary,
+.callout-tldr                    { --callout-color:#1abc9c; --callout-bg:rgba(26,188,156,.06); --callout-header-bg:rgba(26,188,156,.12); }
+.callout-example, .callout-todo  { --callout-color:#e67e22; --callout-bg:rgba(230,126,34,.06); --callout-header-bg:rgba(230,126,34,.12); }
+.callout-bug                     { --callout-color:#e74c3c; --callout-bg:rgba(231,76,60,.06);  --callout-header-bg:rgba(231,76,60,.12); }
+
+/* ---- 일반 <details> HTML 패스스루 ---- */
+.markdown-body details:not(.callout) {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 1em 0;
+  padding: 0 14px;
+}
+.markdown-body details:not(.callout) summary {
+  padding: 8px 0;
+  cursor: pointer;
+  font-weight: 600;
+  margin: 0 -14px;
+  padding-left: 14px;
+  padding-right: 14px;
+  border-radius: 6px;
+}
+.markdown-body details:not(.callout)[open] summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 10px;
+}
+
+/* ---- 인쇄: 모든 콜아웃·details 펼침 ---- */
+@media print {
+  details.callout,
+  .markdown-body details:not(.callout) { display: block; }
+  details.callout .callout-body,
+  .markdown-body details:not(.callout) > *:not(summary) { display: block !important; }
+}

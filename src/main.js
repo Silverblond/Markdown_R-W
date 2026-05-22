@@ -345,7 +345,73 @@ function renderInto(markdown, container) {
     try { window.hljs.highlightElement(block); } catch (_) {}
   });
   resolveLocalImages(container);
+  wireCallouts(container);   // feat #37
   wireCheckboxes(container); // feat #38
+}
+
+// ---------- Callout / Toggle blocks (feat #37) ----------
+const CALLOUT_ICONS = {
+  note: "ℹ️", info: "ℹ️",
+  tip: "💡", hint: "💡",
+  warning: "⚠️", caution: "⚠️", attention: "⚠️",
+  danger: "🚨", error: "🚨",
+  success: "✅", check: "✅", done: "✅",
+  question: "❓", help: "❓", faq: "❓",
+  quote: "💬", cite: "💬",
+  abstract: "📋", summary: "📋", tldr: "📋",
+  example: "📌", bug: "🐛", todo: "📝",
+};
+const CALLOUT_TITLES = {
+  note: "Note", info: "Info",
+  tip: "Tip", hint: "Hint",
+  warning: "Warning", caution: "Caution", attention: "Attention",
+  danger: "Danger", error: "Error",
+  success: "Success", check: "Check", done: "Done",
+  question: "Question", help: "Help", faq: "FAQ",
+  quote: "Quote", cite: "Cite",
+  abstract: "Abstract", summary: "Summary", tldr: "TL;DR",
+  example: "Example", bug: "Bug", todo: "Todo",
+};
+
+function wireCallouts(container) {
+  container.querySelectorAll("blockquote").forEach((bq) => {
+    const firstP = bq.querySelector("p");
+    if (!firstP) return;
+    // textContent의 첫 줄에서 [!type]- Title 패턴 탐색
+    const firstLine = firstP.textContent.split("\n")[0];
+    const m = firstLine.match(/^\[!([\w-]+)\](-?)[ \t]*(.*)/);
+    if (!m) return;
+
+    const type = m[1].toLowerCase();
+    const collapsed = m[2] === "-";
+    const rawTitle = m[3].trim();
+    const title = rawTitle || CALLOUT_TITLES[type] || (type[0].toUpperCase() + type.slice(1));
+    const icon = CALLOUT_ICONS[type] || "📌";
+
+    // 첫 단락에서 [!type] 줄만 제거 (나머지 내용은 body로)
+    const htmlLines = firstP.innerHTML.split("\n");
+    htmlLines.shift();
+    const remaining = htmlLines.join("\n").trim();
+    if (remaining) firstP.innerHTML = remaining;
+    else firstP.remove();
+
+    // <details> 구성
+    const details = document.createElement("details");
+    details.className = `callout callout-${type}`;
+    if (!collapsed) details.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = "callout-title";
+    summary.innerHTML = `<span class="callout-icon">${icon}</span><span class="callout-title-text">${title}</span><span class="callout-chevron">▶</span>`;
+
+    const body = document.createElement("div");
+    body.className = "callout-body";
+    while (bq.firstChild) body.appendChild(bq.firstChild);
+
+    details.appendChild(summary);
+    details.appendChild(body);
+    bq.replaceWith(details);
+  });
 }
 
 // ---------- Checkbox toggle (feat #38) ----------

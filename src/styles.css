@@ -983,6 +983,34 @@ body.focus-mode #edit-preview {
 #lightbox-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
 
 /* ============================================================
+   Emoji autocomplete dropdown (feat #39)
+   ============================================================ */
+.emoji-dropdown {
+  position: fixed;
+  z-index: 2000;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+  padding: 4px;
+  min-width: 200px;
+  max-width: 280px;
+}
+.emoji-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.emoji-item:hover,
+.emoji-item.active { background: var(--accent); color: #fff; }
+.emoji-char { font-size: 18px; line-height: 1; flex-shrink: 0; }
+.emoji-key  { opacity: 0.8; font-family: monospace; }
+
+/* ============================================================
    Callout / Toggle blocks (feat #37)
    Usage: > [!note]- Optional Title  (- = collapsed, default open)
    Also: raw <details><summary>...</summary>...</details> HTML

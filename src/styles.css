@@ -335,6 +335,7 @@ body {
 .welcome {
   position: absolute;
   inset: 0;
+  z-index: 20; /* split-resizer(z-index:10) 위에 오도록 — #54 */
   display: flex;
   align-items: center;
   justify-content: center;

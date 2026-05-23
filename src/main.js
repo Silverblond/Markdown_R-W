@@ -1534,16 +1534,21 @@ async function wireCloseGuard() {
   try {
     const appWindow = window.__TAURI__.window.getCurrentWindow();
     await appWindow.onCloseRequested(async (event) => {
-      const anyDirty = tabs.some((t) => t.dirty) || dirty;
-      if (!anyDirty) return; // nothing unsaved — let the OS close normally
+      // Always intercept so we control the close path on all platforms (incl. Windows)
       event.preventDefault();
-
-      // Ask whether to save before quitting
-      const wantSave = await dialog.ask(
-        "저장하지 않은 변경 사항이 있습니다.\n저장 후 종료하시겠습니까?",
-        { title: "저장하지 않은 변경 사항", okLabel: "저장 후 종료", cancelLabel: "저장 안 함" }
-      );
-      if (wantSave) await save();
+      const anyDirty = tabs.some((t) => t.dirty) || dirty;
+      if (anyDirty) {
+        try {
+          const wantSave = await dialog.ask(
+            "저장하지 않은 변경 사항이 있습니다.\n저장 후 종료하시겠습니까?",
+            { title: "저장하지 않은 변경 사항", okLabel: "저장 후 종료", cancelLabel: "저장 안 함" }
+          );
+          if (wantSave) await save();
+        } catch (_) {
+          // Dialog error — proceed to close anyway
+        }
+      }
+      // Always destroy so the window is never left in a stuck state
       await appWindow.destroy();
     });
   } catch (_) {

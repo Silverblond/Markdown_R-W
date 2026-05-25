@@ -1533,33 +1533,25 @@ function wire() {
 async function wireCloseGuard() {
   try {
     const appWindow = window.__TAURI__.window.getCurrentWindow();
-    let _allowClose = false; // flag to break the CloseRequested re-entry loop
 
     await appWindow.onCloseRequested(async (event) => {
-      // Second invocation triggered by appWindow.close() below — let OS proceed
-      if (_allowClose) return;
+      // Always intercept — Rust app.exit(0) is the only reliable cross-platform quit
+      event.preventDefault();
 
       const anyDirty = tabs.some((t) => t.dirty) || dirty;
-      if (!anyDirty) {
-        // Nothing unsaved: skip dialog and close immediately
-        _allowClose = true;
-        await appWindow.close();
-        return;
+      if (anyDirty) {
+        try {
+          const wantSave = await dialog.ask(
+            "저장하지 않은 변경 사항이 있습니다.\n저장 후 종료하시겠습니까?",
+            { title: "저장하지 않은 변경 사항", okLabel: "저장 후 종료", cancelLabel: "저장 안 함" }
+          );
+          if (wantSave) await save();
+        } catch (_) {
+          // Dialog error — quit anyway
+        }
       }
-
-      // Unsaved changes: intercept and ask
-      event.preventDefault();
-      try {
-        const wantSave = await dialog.ask(
-          "저장하지 않은 변경 사항이 있습니다.\n저장 후 종료하시겠습니까?",
-          { title: "저장하지 않은 변경 사항", okLabel: "저장 후 종료", cancelLabel: "저장 안 함" }
-        );
-        if (wantSave) await save();
-      } catch (_) {
-        // Dialog error — close anyway
-      }
-      _allowClose = true;
-      await appWindow.close(); // re-fires CloseRequested; _allowClose=true → passes through
+      // Rust app.exit(0): terminates the process directly — works on all platforms
+      await invoke("quit_app");
     });
   } catch (_) {
     // Fallback for environments where onCloseRequested isn't available

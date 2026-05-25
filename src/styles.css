@@ -516,6 +516,16 @@ body.drag-over .welcome {
   flex: 0 0 auto;
 }
 
+/* ---- Version badge (feat #58) ---- */
+.version-badge {
+  font-size: 11px;
+  font-family: monospace;
+  opacity: 0.35;
+  margin-left: 10px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
 /* ---- Update badge (feat #48) ---- */
 .update-badge {
   font-size: 11px;

@@ -1649,6 +1649,12 @@ async function init() {
     if (startup) await openPath(startup);
   } catch (_) {}
 
+  // 버전 배지 표시 (feat #58)
+  invoke("get_version").then((v) => {
+    const el = $("version-badge");
+    if (el) el.textContent = `v${v}`;
+  }).catch(() => {});
+
   // 업데이트 체크 — 비동기, 실패해도 앱에 영향 없음 (feat #48)
   checkForUpdate();
 }

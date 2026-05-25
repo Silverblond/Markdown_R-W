@@ -116,6 +116,11 @@ fn read_dir_tree(path: String) -> Result<FileNode, String> {
 }
 
 #[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -163,6 +168,7 @@ pub fn run() {
             unwatch_file,
             get_version,
             get_platform_info,
+            quit_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -46,6 +46,7 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
+  cursor: default; /* WebKit 기본 I-beam 커서 방지 (#60) */
 }
 
 /* ============================================================
@@ -963,7 +964,8 @@ body.focus-mode #edit-preview {
 /* ============================================================
    Lightbox (issue #27)
    ============================================================ */
-.markdown-body img { cursor: zoom-in; }
+.markdown-body img { cursor: default; }
+.markdown-body img:hover { cursor: zoom-in; }
 
 #lightbox {
   position: fixed;

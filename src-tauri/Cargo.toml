@@ -1,6 +1,6 @@
 [package]
 name = "mdviewer"
-version = "1.6.6"
+version = "1.6.7"
 description = "Markdown Viewer & Editor"
 authors = ["kdg"]
 edition = "2021"

@@ -1655,11 +1655,6 @@ async function init() {
     if (el) el.textContent = `v${v}`;
   }).catch(() => {});
 
-  // 로딩 완료 후 윈도우 표시 — 로딩 중 커서 변화를 사용자에게 노출하지 않음
-  try {
-    await window.__TAURI__.window.getCurrentWindow().show();
-  } catch (_) {}
-
   // 업데이트 체크 — 비동기, 실패해도 앱에 영향 없음 (feat #48)
   checkForUpdate();
 }

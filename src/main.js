@@ -925,9 +925,11 @@ function refreshActiveView() {
     } else {
       renderMarkdownSource(currentText);               // issue #66 개선
     }
+    els.tocList.innerHTML = "";                        // 원본 모드는 목차 없음
   } else if (mode === "edit") {
     if (isCodeFile(currentPath)) {
       renderCodePreview(els.editPreview, els.editor.value, currentPath); // issue #66
+      els.tocList.innerHTML = "";                      // 코드 파일은 목차 없음
     } else {
       renderInto(els.editor.value, els.editPreview);
       buildToc(els.editPreview);

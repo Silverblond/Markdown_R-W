@@ -147,8 +147,40 @@ async function closeTab(idx) {
   renderTabBar();
 }
 
+// ---------- Code file support (issue #66) ----------
+const CODE_LANG_MAP = {
+  // C family
+  c: "c", h: "c", cpp: "cpp", cc: "cpp", cxx: "cpp", hpp: "cpp", hxx: "cpp",
+  // JVM
+  java: "java", kt: "kotlin", scala: "scala",
+  // Scripting
+  py: "python", rb: "ruby", sh: "bash", bash: "bash", zsh: "bash", fish: "bash",
+  // Web
+  js: "javascript", mjs: "javascript", cjs: "javascript",
+  ts: "typescript", tsx: "typescript", jsx: "javascript",
+  html: "html", htm: "html", css: "css", scss: "css", less: "css",
+  json: "json", jsonc: "json",
+  // Systems
+  rs: "rust", go: "go", swift: "swift",
+  // Data / config
+  sql: "sql", yaml: "yaml", yml: "yaml", toml: "toml", xml: "xml",
+  // Other
+  ps1: "powershell", lua: "lua", php: "php", cs: "csharp",
+  ex: "elixir", exs: "elixir", dart: "dart",
+};
+
+function getFileExt(p) {
+  return (p ?? "").replace(/\\/g, "/").split("/").pop().split(".").pop().toLowerCase();
+}
+function isCodeFile(p) { return !!p && (getFileExt(p) in CODE_LANG_MAP); }
+function getCodeLang(p) { return CODE_LANG_MAP[getFileExt(p)] ?? "plaintext"; }
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
 const MD_FILTERS = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "txt"] },
+  { name: "소스코드", extensions: Object.keys(CODE_LANG_MAP) },
   { name: "All Files", extensions: ["*"] },
 ];
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tiff", "avif"]);
@@ -366,6 +398,61 @@ function renderInto(markdown, container) {
   resolveLocalImages(container);
   wireCallouts(container);   // feat #37
   wireCheckboxes(container); // feat #38
+}
+
+// ---------- Code file rendering (issue #66) ----------
+
+/** 소스 패널(<pre id="view-source">)에 코드 파일을 줄 번호 포함 렌더링 */
+function renderCodeSource(text, path) {
+  const langHint = getCodeLang(path);
+  const lang = window.hljs.getLanguage(langHint) ? langHint : "plaintext";
+  let highlighted;
+  try {
+    highlighted = window.hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+  } catch (_) {
+    highlighted = escapeHtml(text);
+  }
+
+  // 줄 번호를 인라인 <span>으로 각 줄 앞에 삽입 (flex 레이아웃 없이 안전하게)
+  const rawLines = text.split("\n");
+  const hlLines  = highlighted.split("\n");
+  // 마지막 빈 줄 제거
+  if (hlLines.length && hlLines[hlLines.length - 1] === "") hlLines.pop();
+  const lnWidth = String(rawLines.length).length;
+  const withNums = hlLines.map((line, i) => {
+    const num = String(i + 1).padStart(lnWidth, " ");
+    return `<span class="ln" aria-hidden="true">${escapeHtml(num)}</span>${line}`;
+  }).join("\n");
+
+  els.sourcePre.className = "pane code-file-view";
+  els.sourcePre.innerHTML = `<code class="hljs language-${lang}">${withNums}</code>`;
+  els.source = els.sourcePre.querySelector("code");
+}
+
+/** 마크다운 소스 패널 구조를 표준으로 복원 후 하이라이팅 */
+function renderMarkdownSource(text) {
+  if (els.sourcePre.classList.contains("code-file-view")) {
+    els.sourcePre.className = "pane";
+    els.sourcePre.innerHTML = '<code class="language-markdown"></code>';
+    els.source = els.sourcePre.querySelector("code");
+  }
+  els.source.textContent = text;
+  els.source.className = "language-markdown";
+  try { window.hljs.highlightElement(els.source); } catch (_) {}
+}
+
+/** 일반 div 컨테이너에 코드 하이라이트만 렌더링 (편집 미리보기·인쇄용) */
+function renderCodePreview(container, text, path) {
+  const langHint = getCodeLang(path);
+  const lang = window.hljs.getLanguage(langHint) ? langHint : "plaintext";
+  let highlighted;
+  try {
+    highlighted = window.hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+  } catch (_) {
+    highlighted = escapeHtml(text);
+  }
+  container.innerHTML =
+    `<pre class="code-preview-wrap hljs language-${lang}"><code>${highlighted}</code></pre>`;
 }
 
 // ---------- Emoji autocomplete (feat #39) ----------
@@ -807,9 +894,15 @@ function buildToc(container) {
 
 // ---------- View ----------
 function setMode(next) {
+  // 코드 파일은 미리보기 없음 — source 모드로 리다이렉트 (issue #66)
+  if (next === "preview" && isCodeFile(currentPath)) next = "source";
+
   mode = next;
+  const isCode = isCodeFile(currentPath);
   document.querySelectorAll(".modes button").forEach((b) => {
     b.classList.toggle("active", b.dataset.mode === next);
+    // 코드 파일일 때 '미리보기' 버튼 비활성화
+    if (b.dataset.mode === "preview") b.disabled = isCode;
   });
   els.preview.classList.toggle("hidden", next !== "preview");
   els.sourcePre.classList.toggle("hidden", next !== "source");
@@ -827,12 +920,18 @@ function refreshActiveView() {
     buildToc(els.preview);
     if (searchOpen) applySearch();
   } else if (mode === "source") {
-    els.source.textContent = currentText;
-    els.source.className = "language-markdown";
-    try { window.hljs.highlightElement(els.source); } catch (_) {}
+    if (isCodeFile(currentPath)) {
+      renderCodeSource(currentText, currentPath);      // issue #66
+    } else {
+      renderMarkdownSource(currentText);               // issue #66 개선
+    }
   } else if (mode === "edit") {
-    renderInto(els.editor.value, els.editPreview);
-    buildToc(els.editPreview);
+    if (isCodeFile(currentPath)) {
+      renderCodePreview(els.editPreview, els.editor.value, currentPath); // issue #66
+    } else {
+      renderInto(els.editor.value, els.editPreview);
+      buildToc(els.editPreview);
+    }
   }
 }
 
@@ -919,14 +1018,15 @@ async function openPath(path) {
     const tab = getCurrentTab();
     const isEmptyNewTab = tab && !tab.path && !tab.text && !tab.dirty;
 
+    const defaultMode = isCodeFile(path) ? "source" : "preview"; // issue #66
     if (isEmptyNewTab) {
       // Reuse current empty/new tab
       setContent(text, path);
-      setMode("preview");
+      setMode(defaultMode);
     } else {
       // Open in a new tab
       saveCurrentTabState();
-      const newTab = { id: nextTabId++, path, text, dirty: false, mode: "preview",
+      const newTab = { id: nextTabId++, path, text, dirty: false, mode: defaultMode,
                        editorValue: text, previewScrollTop: 0, sourceScrollTop: 0, editScrollTop: 0 };
       tabs.push(newTab);
       activeTabIdx = tabs.length - 1;
@@ -938,7 +1038,7 @@ async function openPath(path) {
       markActiveTreeItem(path);
       els.filename.textContent = baseName(path);
       document.title = `${baseName(path)} — Markdown Viewer`;
-      setMode("preview");
+      setMode(defaultMode);
       renderTabBar();
     }
     try { await invoke("watch_file", { path }); } catch (_) {}
@@ -1388,8 +1488,14 @@ function wire() {
 
   // Print (feature #3) — fix #36: 모드에 상관없이 항상 미리보기 렌더링 후 출력
   $("btn-print").addEventListener("click", () => {
-    const src = mode === "edit" ? (els.editor?.value ?? currentText) : currentText;
-    if (mode !== "preview") renderInto(src, els.preview);
+    if (isCodeFile(currentPath)) {
+      // 코드 파일: 하이라이트된 코드를 preview 패널에 넣어 출력 (issue #66)
+      const src = mode === "edit" ? (els.editor?.value ?? currentText) : currentText;
+      renderCodePreview(els.preview, src, currentPath);
+    } else {
+      const src = mode === "edit" ? (els.editor?.value ?? currentText) : currentText;
+      if (mode !== "preview") renderInto(src, els.preview);
+    }
     window.print();
   });
 
@@ -1425,8 +1531,12 @@ function wire() {
     if (tab) { tab.dirty = dirty; tab.editorValue = els.editor.value; renderTabBar(); }
     clearTimeout(renderTimer);
     renderTimer = setTimeout(() => {
-      renderInto(els.editor.value, els.editPreview);
-      buildToc(els.editPreview);
+      if (isCodeFile(currentPath)) {
+        renderCodePreview(els.editPreview, els.editor.value, currentPath); // issue #66
+      } else {
+        renderInto(els.editor.value, els.editPreview);
+        buildToc(els.editPreview);
+      }
     }, 150);
     refreshStatus();
     updateEmojiDropdown(); // feat #39

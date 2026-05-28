@@ -304,6 +304,79 @@ body {
   cursor: default; /* WebKit I-beam 방지 */
 }
 
+/* ============================================================
+   Code file viewer — 인라인 줄 번호 (issue #66)
+   ============================================================ */
+#view-source.code-file-view {
+  padding: 20px 0;
+  overflow: auto;
+}
+
+#view-source.code-file-view > code {
+  display: block;
+  padding: 0 28px !important;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre;
+  word-break: normal;
+  cursor: default;
+}
+
+/* 각 줄 앞에 붙는 줄 번호 */
+.ln {
+  display: inline-block;
+  min-width: 2.8em;
+  padding-right: 1.4em;
+  text-align: right;
+  color: var(--text-dim);
+  opacity: 0.45;
+  user-select: none;
+  font-style: normal;
+  font-weight: normal;
+}
+
+/* 편집 모드 코드 미리보기 */
+.code-preview-wrap {
+  margin: 0;
+  padding: 24px 28px;
+  background: var(--code-bg);
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  min-height: 100%;
+}
+.code-preview-wrap code {
+  font: inherit;
+  background: none;
+  padding: 0;
+  border: none;
+}
+
+/* ============================================================
+   Markdown 원문 문법 강조 개선 (issue #66)
+   ============================================================ */
+/* Light */
+#view-source .hljs-section      { color: #0550ae; font-weight: 700; }
+#view-source .hljs-bullet       { color: #8250df; }
+#view-source .hljs-emphasis     { color: #1a7f37; font-style: italic; }
+#view-source .hljs-strong       { color: #cf222e; font-weight: 700; }
+#view-source .hljs-link         { color: #0969da; }
+#view-source .hljs-quote        { color: #57606a; font-style: italic; }
+#view-source .hljs-code         { color: #953800; }
+
+/* Dark */
+[data-theme="dark"] #view-source .hljs-section   { color: #79c0ff; font-weight: 700; }
+[data-theme="dark"] #view-source .hljs-bullet    { color: #d2a8ff; }
+[data-theme="dark"] #view-source .hljs-emphasis  { color: #7ee787; font-style: italic; }
+[data-theme="dark"] #view-source .hljs-strong    { color: #ff7b72; font-weight: 700; }
+[data-theme="dark"] #view-source .hljs-link      { color: #58a6ff; }
+[data-theme="dark"] #view-source .hljs-quote     { color: #8b949e; font-style: italic; }
+[data-theme="dark"] #view-source .hljs-code      { color: #ffa657; }
+
 /* Edit split */
 .split {
   display: flex;

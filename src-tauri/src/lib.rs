@@ -97,12 +97,29 @@ fn read_dir_tree(path: String) -> Result<FileNode, String> {
             })
         } else {
             let lower = name.to_lowercase();
-            let is_md = lower.ends_with(".md")
-                || lower.ends_with(".markdown")
-                || lower.ends_with(".mdown")
-                || lower.ends_with(".mkd")
-                || lower.ends_with(".txt");
-            is_md.then(|| FileNode {
+            let ext = lower.rsplit('.').next().unwrap_or("");
+            let is_viewable = matches!(
+                ext,
+                // Markdown
+                "md" | "markdown" | "mdown" | "mkd" | "txt"
+                // C family
+                | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx"
+                // JVM
+                | "java" | "kt" | "scala"
+                // Scripting
+                | "py" | "rb" | "sh" | "bash" | "zsh" | "fish"
+                // Web
+                | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx"
+                | "html" | "htm" | "css" | "scss" | "less"
+                | "json" | "jsonc"
+                // Systems
+                | "rs" | "go" | "swift"
+                // Data / config
+                | "sql" | "yaml" | "yml" | "toml" | "xml"
+                // Other
+                | "ps1" | "lua" | "php" | "cs" | "ex" | "exs" | "dart"
+            );
+            is_viewable.then(|| FileNode {
                 name,
                 path: p.to_string_lossy().to_string(),
                 is_dir: false,

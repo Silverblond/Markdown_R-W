@@ -24,6 +24,7 @@
 | **TOC** | 사이드바에서 현재 파일 목차 자동 생성 및 스크롤 이동 |
 | **파일 감시** | 외부에서 파일이 수정되면 자동 리로드 알림 |
 | **업데이트 알림** | 시작 시 최신 버전 확인, 새 버전이 있으면 상태바에 배지 표시 |
+| **버전 표시** | 상태바 오른쪽 끝에 현재 버전 항상 표시 |
 | **테마** | 다크 / 라이트 토글 (설정 저장) |
 | **집중 모드** | 사이드바·툴바 숨기고 본문만 표시 (`Ctrl/Cmd+Shift+F`) |
 | **검색** | 현재 문서 내 텍스트 검색 (`Ctrl/Cmd+F`) |
@@ -62,7 +63,7 @@
 | macOS Apple Silicon (M1/M2/M3/M4) | `Markdown.Viewer_*_aarch64.dmg` | |
 | macOS Intel | `Markdown.Viewer_*_x64.dmg` | |
 | Windows (설치 마법사) | `Markdown.Viewer_*_x64-setup.exe` | |
-| Windows (MSI) | `Markdown.Viewer_*_x64_en-US.msi` | |
+| Windows (MSI) | `Markdown.Viewer_*_x64_en-US.msi` | 설치 마법사 대안 |
 
 ### macOS 설치
 

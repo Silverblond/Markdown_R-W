@@ -293,6 +293,7 @@ body {
   margin: 0;
   padding: 24px 32px;
   background: var(--code-bg);
+  cursor: default; /* WebKit I-beam 방지 */
 }
 #view-source code {
   font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
@@ -300,6 +301,7 @@ body {
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  cursor: default; /* WebKit I-beam 방지 */
 }
 
 /* Edit split */
@@ -341,6 +343,7 @@ body {
   align-items: center;
   justify-content: center;
   background: var(--bg);
+  cursor: default; /* WebKit I-beam 방지 */
 }
 
 .welcome-card {
@@ -548,7 +551,7 @@ body.drag-over .welcome {
 /* ============================================================
    Markdown body (GitHub-ish, themed)
    ============================================================ */
-.markdown-body { line-height: 1.75; word-wrap: break-word; }
+.markdown-body { line-height: 1.75; word-wrap: break-word; cursor: default; /* WebKit I-beam 방지 */ }
 
 .markdown-body h1, .markdown-body h2 {
   border-bottom: 1px solid var(--border);
